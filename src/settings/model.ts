@@ -45,8 +45,24 @@ export interface LegacyCommandSettings {
   showInContextMenu: boolean;
 }
 
+export type AgentBackend = "pi" | "upstream";
+export type PiAgentApiMode = "openai-completions" | "openai-responses";
+export type PiAgentThinkingLevel = "minimal" | "low" | "medium" | "high" | "xhigh";
+
+export interface PiAgentSettings {
+  apiMode: PiAgentApiMode;
+  provider: string;
+  baseUrl: string;
+  apiKey: string;
+  modelId: string;
+  thinkingLevel: PiAgentThinkingLevel;
+  enabledToolIds: string[];
+}
+
 export interface CopilotSettings {
   userId: string;
+  agentBackend: AgentBackend;
+  piAgent: PiAgentSettings;
   plusLicenseKey: string;
   openAIApiKey: string;
   openAIOrgId: string;
@@ -359,6 +375,63 @@ export function sanitizeSettings(settings: CopilotSettings): CopilotSettings {
   delete sanitizedSettingsRecord.miyoRemoteVaultPath;
   delete sanitizedSettingsRecord.miyoVaultName;
   delete sanitizedSettingsRecord.enableMiyoSearch;
+
+  const validAgentBackends: AgentBackend[] = ["pi", "upstream"];
+  if (!validAgentBackends.includes(sanitizedSettings.agentBackend)) {
+    sanitizedSettings.agentBackend = DEFAULT_SETTINGS.agentBackend;
+  }
+
+  const rawPiAgent = settingsToSanitize.piAgent;
+  const defaultPiAgent = DEFAULT_SETTINGS.piAgent;
+  const sanitizedPiAgent: PiAgentSettings = {
+    ...defaultPiAgent,
+    ...(rawPiAgent && typeof rawPiAgent === "object" ? rawPiAgent : {}),
+  };
+  const validPiApiModes: PiAgentApiMode[] = ["openai-completions", "openai-responses"];
+  if (!validPiApiModes.includes(sanitizedPiAgent.apiMode)) {
+    sanitizedPiAgent.apiMode = defaultPiAgent.apiMode;
+  }
+  const validThinkingLevels: PiAgentThinkingLevel[] = ["minimal", "low", "medium", "high", "xhigh"];
+  if (!validThinkingLevels.includes(sanitizedPiAgent.thinkingLevel)) {
+    sanitizedPiAgent.thinkingLevel = defaultPiAgent.thinkingLevel;
+  }
+  if (
+    typeof sanitizedPiAgent.provider !== "string" ||
+    sanitizedPiAgent.provider.trim().length === 0
+  ) {
+    sanitizedPiAgent.provider = defaultPiAgent.provider;
+  } else {
+    sanitizedPiAgent.provider = sanitizedPiAgent.provider.trim();
+  }
+  if (
+    typeof sanitizedPiAgent.baseUrl !== "string" ||
+    sanitizedPiAgent.baseUrl.trim().length === 0
+  ) {
+    sanitizedPiAgent.baseUrl = defaultPiAgent.baseUrl;
+  } else {
+    sanitizedPiAgent.baseUrl = sanitizedPiAgent.baseUrl.trim();
+  }
+  if (typeof sanitizedPiAgent.apiKey !== "string") {
+    sanitizedPiAgent.apiKey = defaultPiAgent.apiKey;
+  }
+  if (
+    typeof sanitizedPiAgent.modelId !== "string" ||
+    sanitizedPiAgent.modelId.trim().length === 0
+  ) {
+    sanitizedPiAgent.modelId = defaultPiAgent.modelId;
+  } else {
+    sanitizedPiAgent.modelId = sanitizedPiAgent.modelId.trim();
+  }
+  if (!Array.isArray(sanitizedPiAgent.enabledToolIds)) {
+    sanitizedPiAgent.enabledToolIds = defaultPiAgent.enabledToolIds;
+  }
+  sanitizedPiAgent.enabledToolIds = sanitizedPiAgent.enabledToolIds
+    .filter((toolId): toolId is string => typeof toolId === "string" && toolId.trim().length > 0)
+    .map((toolId) => toolId.trim());
+  if (sanitizedPiAgent.enabledToolIds.length === 0) {
+    sanitizedPiAgent.enabledToolIds = defaultPiAgent.enabledToolIds;
+  }
+  sanitizedSettings.piAgent = sanitizedPiAgent;
 
   // Migration: Rename self-hosted search settings to self-host mode (v3.2.0+)
   if (

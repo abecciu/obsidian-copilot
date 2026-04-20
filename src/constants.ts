@@ -885,6 +885,26 @@ export const RESTRICTION_MESSAGES = {
 
 export const DEFAULT_SETTINGS: CopilotSettings = {
   userId: uuidv4(),
+  agentBackend: "pi",
+  piAgent: {
+    apiMode: "openai-responses",
+    provider: "openai",
+    baseUrl: "https://api.openai.com/v1",
+    apiKey: "",
+    modelId: "gpt-4.1-mini",
+    thinkingLevel: "minimal",
+    enabledToolIds: [
+      "localSearch",
+      "readNote",
+      "webSearch",
+      "writeFile",
+      "editFile",
+      "getCurrentTime",
+      "getTimeRangeMs",
+      "getTimeInfoByEpoch",
+      "convertTimeBetweenTimezones",
+    ],
+  },
   isPlusUser: false,
   plusLicenseKey: "",
   openAIApiKey: "",

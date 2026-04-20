@@ -1,4 +1,5 @@
 import { setChainType, setModelKey } from "@/aiParams";
+import { shouldBypassLicenseChecks } from "@/agentBackend";
 import { ChainType } from "@/chainFactory";
 import { CopilotPlusExpiredModal } from "@/components/modals/CopilotPlusExpiredModal";
 import {
@@ -96,6 +97,9 @@ export function isPlusModel(modelKey: string): boolean {
  */
 export function isPlusEnabled(): boolean {
   const settings = getSettings();
+  if (shouldBypassLicenseChecks(settings)) {
+    return true;
+  }
   // Self-host mode with valid plan validation bypasses Plus requirements
   if (isSelfHostModeValid()) {
     return true;
@@ -109,6 +113,9 @@ export function isPlusEnabled(): boolean {
  */
 export function useIsPlusUser(): boolean | undefined {
   const settings = useSettingsValue();
+  if (shouldBypassLicenseChecks(settings)) {
+    return true;
+  }
   // Self-host mode with valid plan validation bypasses Plus requirements (requires license key)
   if (
     settings.plusLicenseKey &&
@@ -133,6 +140,9 @@ export function useIsPlusUser(): boolean | undefined {
  * When self-host mode is valid, this returns true to allow offline usage.
  */
 export async function checkIsPlusUser(context?: Record<string, any>): Promise<boolean | undefined> {
+  if (shouldBypassLicenseChecks()) {
+    return true;
+  }
   // Self-host mode with valid plan validation bypasses license check
   if (isSelfHostModeValid()) {
     return true;
@@ -149,6 +159,9 @@ export async function checkIsPlusUser(context?: Record<string, any>): Promise<bo
 
 /** Check if the user is on a plan that qualifies for self-host mode. */
 export async function isSelfHostEligiblePlan(): Promise<boolean> {
+  if (shouldBypassLicenseChecks()) {
+    return true;
+  }
   if (!getSettings().plusLicenseKey) {
     return false;
   }
@@ -172,8 +185,13 @@ export async function isSelfHostEligiblePlan(): Promise<boolean> {
 export function useIsSelfHostEligible(): boolean | undefined {
   const settings = useSettingsValue();
   const [isEligible, setIsEligible] = React.useState<boolean | undefined>(undefined);
+  const isLicenseBypassed = shouldBypassLicenseChecks(settings);
 
   React.useEffect(() => {
+    if (isLicenseBypassed) {
+      setIsEligible(true);
+      return;
+    }
     // No license key = not eligible, regardless of cached validation state.
     // Also force self-host mode OFF so the toggle reflects the revoked state.
     if (!settings.plusLicenseKey) {
@@ -209,6 +227,7 @@ export function useIsSelfHostEligible(): boolean | undefined {
         setIsEligible(false);
       });
   }, [
+    isLicenseBypassed,
     settings.plusLicenseKey,
     settings.enableSelfHostMode,
     settings.selfHostModeValidatedAt,
@@ -233,6 +252,11 @@ export function useIsSelfHostEligible(): boolean | undefined {
  */
 export async function validateSelfHostMode(): Promise<boolean> {
   const settings = getSettings();
+
+  if (shouldBypassLicenseChecks(settings)) {
+    logInfo("Self-host mode validation bypassed because the pi backend is active");
+    return true;
+  }
 
   // Already permanently validated - allow re-enable (offline-safe)
   if (settings.selfHostValidationCount >= SELF_HOST_PERMANENT_VALIDATION_COUNT) {
@@ -282,6 +306,9 @@ export async function validateSelfHostMode(): Promise<boolean> {
  */
 export async function refreshSelfHostModeValidation(): Promise<void> {
   const settings = getSettings();
+  if (shouldBypassLicenseChecks(settings)) {
+    return;
+  }
   if (!settings.enableSelfHostMode && !settings.enableMiyo) {
     return;
   }
@@ -381,6 +408,9 @@ export function navigateToPlusPage(medium: PlusUtmMedium): void {
 }
 
 export function turnOnPlus(): void {
+  if (shouldBypassLicenseChecks()) {
+    return;
+  }
   updateSetting("isPlusUser", true);
 }
 
@@ -391,6 +421,9 @@ export function turnOnPlus(): void {
  * Only update the isPlusUser flag.
  */
 export function turnOffPlus(): void {
+  if (shouldBypassLicenseChecks()) {
+    return;
+  }
   const previousIsPlusUser = getSettings().isPlusUser;
   updateSetting("isPlusUser", false);
   if (previousIsPlusUser) {

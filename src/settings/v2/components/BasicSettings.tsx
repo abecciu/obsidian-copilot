@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Input } from "@/components/ui/input";
 import { getModelDisplayWithIcons } from "@/components/ui/model-display";
+import { PasswordInput } from "@/components/ui/password-input";
 import { SettingItem } from "@/components/ui/setting-item";
 import { DEFAULT_OPEN_AREA, PLUS_UTM_MEDIUMS, SEND_SHORTCUT } from "@/constants";
 import { useTab } from "@/contexts/TabContext";
@@ -98,6 +99,119 @@ export const BasicSettings: React.FC = () => {
         <div className="tw-mb-3 tw-text-xl tw-font-bold">General</div>
         <div className="tw-space-y-4">
           <div className="tw-space-y-4">
+            <SettingItem
+              type="select"
+              title="Agent Backend"
+              description="Choose whether this fork uses the upstream Copilot runtime or the local pi-agent runtime."
+              value={settings.agentBackend}
+              onChange={(value) => updateSetting("agentBackend", value as "pi" | "upstream")}
+              options={[
+                { label: "Pi Agent", value: "pi" },
+                { label: "Upstream Copilot", value: "upstream" },
+              ]}
+            />
+
+            {settings.agentBackend === "pi" && (
+              <>
+                <SettingItem
+                  type="select"
+                  title="Pi API Mode"
+                  description="Select which OpenAI-compatible API shape pi-ai should use."
+                  value={settings.piAgent.apiMode}
+                  onChange={(value) =>
+                    updateSetting("piAgent", {
+                      ...settings.piAgent,
+                      apiMode: value as "openai-completions" | "openai-responses",
+                    })
+                  }
+                  options={[
+                    { label: "OpenAI Responses", value: "openai-responses" },
+                    { label: "OpenAI Completions", value: "openai-completions" },
+                  ]}
+                />
+
+                <SettingItem
+                  type="text"
+                  title="Pi Provider"
+                  description="Provider label passed to pi-ai. Keep this aligned with your endpoint, for example openai, openrouter, groq, or a custom provider name."
+                  value={settings.piAgent.provider}
+                  onChange={(value) =>
+                    updateSetting("piAgent", {
+                      ...settings.piAgent,
+                      provider: value,
+                    })
+                  }
+                  placeholder="openai"
+                />
+
+                <SettingItem
+                  type="text"
+                  title="Pi Base URL"
+                  description="Base URL for your OpenAI-compatible endpoint."
+                  value={settings.piAgent.baseUrl}
+                  onChange={(value) =>
+                    updateSetting("piAgent", {
+                      ...settings.piAgent,
+                      baseUrl: value,
+                    })
+                  }
+                  placeholder="https://api.openai.com/v1"
+                />
+
+                <SettingItem
+                  type="text"
+                  title="Pi Model ID"
+                  description="Model identifier sent to your configured pi backend."
+                  value={settings.piAgent.modelId}
+                  onChange={(value) =>
+                    updateSetting("piAgent", {
+                      ...settings.piAgent,
+                      modelId: value,
+                    })
+                  }
+                  placeholder="gpt-4.1-mini"
+                />
+
+                <SettingItem
+                  type="select"
+                  title="Pi Thinking Level"
+                  description="Reasoning level forwarded to pi-agent-core."
+                  value={settings.piAgent.thinkingLevel}
+                  onChange={(value) =>
+                    updateSetting("piAgent", {
+                      ...settings.piAgent,
+                      thinkingLevel: value as "minimal" | "low" | "medium" | "high" | "xhigh",
+                    })
+                  }
+                  options={[
+                    { label: "Minimal", value: "minimal" },
+                    { label: "Low", value: "low" },
+                    { label: "Medium", value: "medium" },
+                    { label: "High", value: "high" },
+                    { label: "Extra High", value: "xhigh" },
+                  ]}
+                />
+
+                <SettingItem
+                  type="custom"
+                  title="Pi API Key"
+                  description="API key used by the local pi backend. License checks are bypassed while the pi backend is active."
+                >
+                  <PasswordInput
+                    className="tw-w-full sm:tw-w-[320px]"
+                    placeholder="Enter API key"
+                    value={settings.piAgent.apiKey}
+                    onChange={(value) =>
+                      updateSetting("piAgent", {
+                        ...settings.piAgent,
+                        apiKey: value,
+                      })
+                    }
+                  />
+                </SettingItem>
+              </>
+            )}
+
             {/* API Key Section */}
             <SettingItem
               type="custom"

@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChainType } from "@/chainFactory";
 import { cn } from "@/lib/utils";
-import { updateSetting } from "@/settings/model";
+import { updateSetting, useSettingsValue } from "@/settings/model";
 import { isPlusChain } from "@/utils";
 
 interface ChatToolControlsProps {
@@ -47,8 +47,11 @@ const ChatToolControls: React.FC<ChatToolControlsProps> = ({
   onComposerToggleOff,
   currentChain,
 }) => {
+  const settings = useSettingsValue();
   const isCopilotPlus = isPlusChain(currentChain);
-  const showAutonomousAgent = isCopilotPlus && currentChain !== ChainType.PROJECT_CHAIN;
+  const showAutonomousAgent =
+    settings.agentBackend !== "pi" && isCopilotPlus && currentChain !== ChainType.PROJECT_CHAIN;
+  const shouldShowManualToolToggles = !showAutonomousAgent || !autonomousAgentToggle;
 
   const handleAutonomousAgentToggle = () => {
     const newValue = !autonomousAgentToggle;
@@ -115,7 +118,7 @@ const ChatToolControls: React.FC<ChatToolControlsProps> = ({
         )}
 
         {/* Toggle buttons for vault, web search, and composer - show when Autonomous Agent is off */}
-        {!autonomousAgentToggle && (
+        {shouldShowManualToolToggles && (
           <>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -198,7 +201,7 @@ const ChatToolControls: React.FC<ChatToolControlsProps> = ({
             )}
 
             {/* Tool options - show when Autonomous Agent is off */}
-            {!autonomousAgentToggle && (
+            {shouldShowManualToolToggles && (
               <>
                 <DropdownMenuItem
                   onClick={handleVaultToggle}

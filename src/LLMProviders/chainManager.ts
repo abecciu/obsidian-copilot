@@ -15,6 +15,7 @@ import {
   ProjectChainRunner,
   VaultQAChainRunner,
 } from "@/LLMProviders/chainRunner/index";
+import { isPiBackendActive } from "@/agentBackend";
 import { logError, logInfo } from "@/logger";
 import { getSettings, subscribeToSettingsChange } from "@/settings/model";
 import { getSystemPrompt } from "@/system-prompts/systemPromptBuilder";
@@ -32,6 +33,7 @@ import ChatModelManager from "./chatModelManager";
 import MemoryManager from "./memoryManager";
 import PromptManager from "./promptManager";
 import { UserMemoryManager } from "@/memory/UserMemoryManager";
+import { PiAgentChainRunner } from "@/pi/PiAgentChainRunner";
 
 export default class ChainManager {
   // TODO: These chains are deprecated since we now use direct chat model calls in chain runners
@@ -118,6 +120,11 @@ export default class ChainManager {
     options: SetChainOptions = {},
     neededReInitChatMode: boolean = true
   ): Promise<void> {
+    if (isPiBackendActive()) {
+      this.pendingModelError = null;
+      return;
+    }
+
     let newModelKey: string | undefined;
     const chainType = getChainType();
     const currentProject = getCurrentProject();
@@ -288,6 +295,10 @@ export default class ChainManager {
     const chainType = getChainType();
     const settings = getSettings();
 
+    if (isPiBackendActive(settings)) {
+      return new PiAgentChainRunner(this, chainType);
+    }
+
     switch (chainType) {
       case ChainType.LLM_CHAIN:
         return new LLMChainRunner(this);
@@ -338,13 +349,15 @@ export default class ChainManager {
       l5Text || userMessage.originalMessage || userMessage.message
     );
 
-    this.validateChatModel();
-    this.validateChainInitialization();
+    if (!isPiBackendActive()) {
+      this.validateChatModel();
+      this.validateChainInitialization();
+    }
 
-    const chatModel = this.chatModelManager.getChatModel();
+    const chatModel = !isPiBackendActive() ? this.chatModelManager.getChatModel() : null;
 
     // Handle ignoreSystemMessage
-    if (ignoreSystemMessage || isOSeriesModel(chatModel)) {
+    if (chatModel && (ignoreSystemMessage || isOSeriesModel(chatModel))) {
       let effectivePrompt = ChatPromptTemplate.fromMessages([
         new MessagesPlaceholder("history"),
         HumanMessagePromptTemplate.fromTemplate("{input}"),

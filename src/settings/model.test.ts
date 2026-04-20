@@ -218,6 +218,37 @@ describe("sanitizeSettings - legacy Miyo settings cleanup", () => {
   });
 });
 
+describe("sanitizeSettings - pi backend settings", () => {
+  it("defaults invalid agent backend values to the fork default", () => {
+    const sanitized = sanitizeSettings({
+      ...DEFAULT_SETTINGS,
+      agentBackend: "invalid-backend" as any,
+    });
+
+    expect(sanitized.agentBackend).toBe(DEFAULT_SETTINGS.agentBackend);
+  });
+
+  it("sanitizes malformed nested piAgent settings", () => {
+    const sanitized = sanitizeSettings({
+      ...DEFAULT_SETTINGS,
+      piAgent: {
+        apiMode: "bad-api-mode",
+        provider: 42,
+        baseUrl: null,
+        apiKey: 123,
+        modelId: undefined,
+        thinkingLevel: "ultra",
+        enabledToolIds: ["localSearch", 99, "webSearch"],
+      } as any,
+    });
+
+    expect(sanitized.piAgent).toEqual({
+      ...DEFAULT_SETTINGS.piAgent,
+      enabledToolIds: ["localSearch", "webSearch"],
+    });
+  });
+});
+
 describe("getSystemPrompt", () => {
   beforeEach(() => {
     jest.clearAllMocks();

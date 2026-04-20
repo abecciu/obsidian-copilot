@@ -162,7 +162,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const [webToggle, setWebToggle] = useState(false);
   const [composerToggle, setComposerToggle] = useState(false);
   const [autonomousAgentToggle, setAutonomousAgentToggle] = useState(
-    settings.enableAutonomousAgent
+    settings.agentBackend === "pi" ? false : settings.enableAutonomousAgent
   );
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const loadingMessages = [
@@ -173,14 +173,16 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
   // Sync autonomous agent toggle with settings and chain type
   useEffect(() => {
-    if (currentChain === ChainType.PROJECT_CHAIN) {
+    if (settings.agentBackend === "pi") {
+      setAutonomousAgentToggle(false);
+    } else if (currentChain === ChainType.PROJECT_CHAIN) {
       // Force off in Projects mode
       setAutonomousAgentToggle(false);
     } else {
       // In other modes, use the actual settings value
       setAutonomousAgentToggle(settings.enableAutonomousAgent);
     }
-  }, [settings.enableAutonomousAgent, currentChain]);
+  }, [settings.agentBackend, settings.enableAutonomousAgent, currentChain]);
 
   useEffect(() => {
     if (currentChain === ChainType.PROJECT_CHAIN) {

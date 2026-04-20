@@ -213,6 +213,7 @@ export function ChatControls({
   const settings = useSettingsValue();
   const [selectedChain, setSelectedChain] = useChainType();
   const isPlusUser = useIsPlusUser();
+  const premiumModeLabel = settings.agentBackend === "pi" ? "agent" : "copilot plus";
 
   const handleModeChange = async (chainType: ChainType) => {
     // If leaving project mode with autosave enabled, save chat BEFORE clearing project context
@@ -242,7 +243,7 @@ export function ChatControls({
               {selectedChain === ChainType.COPILOT_PLUS_CHAIN && (
                 <div className="tw-flex tw-items-center tw-gap-1">
                   <Sparkles className="tw-size-4" />
-                  copilot plus
+                  {premiumModeLabel}
                 </div>
               )}
               {selectedChain === ChainType.PROJECT_CHAIN && "projects (alpha)"}
@@ -272,7 +273,7 @@ export function ChatControls({
               >
                 <div className="tw-flex tw-items-center tw-gap-1">
                   <Sparkles className="tw-size-4" />
-                  copilot plus
+                  {premiumModeLabel}
                 </div>
               </DropdownMenuItem>
             ) : (
@@ -282,7 +283,7 @@ export function ChatControls({
                   onCloseProject?.();
                 }}
               >
-                copilot plus
+                {premiumModeLabel}
                 <SquareArrowOutUpRight className="tw-size-3" />
               </DropdownMenuItem>
             )}
@@ -304,7 +305,7 @@ export function ChatControls({
                   onCloseProject?.();
                 }}
               >
-                copilot plus
+                {premiumModeLabel}
                 <SquareArrowOutUpRight className="tw-size-3" />
               </DropdownMenuItem>
             )}

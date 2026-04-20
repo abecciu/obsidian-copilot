@@ -18,6 +18,23 @@ export function PlusSettings() {
     setLocalLicenseKey(settings.plusLicenseKey);
   }, [settings.plusLicenseKey]);
 
+  if (settings.agentBackend === "pi") {
+    return (
+      <section className="tw-flex tw-flex-col tw-gap-4 tw-rounded-lg tw-bg-secondary tw-p-4">
+        <div className="tw-flex tw-items-center tw-justify-between tw-gap-2 tw-text-xl tw-font-bold">
+          <span>Local Pi Backend</span>
+          <Badge variant="outline" className="tw-text-success">
+            Active
+          </Badge>
+        </div>
+        <div className="tw-text-sm tw-text-muted">
+          Copilot Plus license checks are disabled while the pi backend is active. The upstream
+          license key remains available if you switch back to the hosted Copilot runtime.
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="tw-flex tw-flex-col tw-gap-4 tw-rounded-lg tw-bg-secondary tw-p-4">
       <div className="tw-flex tw-items-center tw-justify-between tw-gap-2 tw-text-xl tw-font-bold">

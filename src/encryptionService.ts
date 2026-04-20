@@ -71,6 +71,13 @@ export async function encryptAllKeys(
     );
   }
 
+  if (settings.piAgent) {
+    newSettings.piAgent = {
+      ...settings.piAgent,
+      apiKey: await getEncryptedKey(settings.piAgent.apiKey || ""),
+    };
+  }
+
   return newSettings;
 }
 
