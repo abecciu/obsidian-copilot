@@ -28,6 +28,27 @@ declare module "obsidian" {
      */
     submenu?: Menu;
   }
+
+  // Reason: the npm package `obsidian@1.2.5` does not include SecretStorage
+  // types. Available since Obsidian 1.11.4.
+  interface App {
+    /** OS-level secret storage backed by the system keychain. */
+    secretStorage?: SecretStorage;
+  }
+
+  interface SecretStorage {
+    /** Store a secret under the given identifier. */
+    setSecret(id: string, secret: string): void;
+
+    /** Retrieve a secret by identifier. Returns `null` if not found. */
+    getSecret(id: string): string | null;
+
+    /** List all stored secret identifiers. */
+    listSecrets(): string[];
+
+    /** Remove a secret by identifier. */
+    deleteSecret(id: string): void;
+  }
 }
 
 export enum PromptSortStrategy {
