@@ -45,7 +45,10 @@ jest.mock("@/LLMProviders/projectManager", () => {
 });
 
 jest.mock("@/settings/model", () => ({
-  getSettings: jest.fn().mockReturnValue({ enableCustomPromptTemplating: true }),
+  getSettings: jest.fn().mockReturnValue({
+    enableCustomPromptTemplating: true,
+    agentBackend: "upstream",
+  }),
 }));
 
 jest.mock("@/system-prompts/systemPromptBuilder", () => ({
@@ -284,9 +287,11 @@ describe("ChatManager", () => {
   describe("editMessage", () => {
     it("should edit a message and reprocess context", async () => {
       const mockActiveFile = { path: "active.md", basename: "active" } as TFile;
+      const mockEditedMessage = createMockMessage("msg-1", "Edited message", USER_SENDER);
 
       mockPlugin.app.workspace.getActiveFile.mockReturnValue(mockActiveFile);
       mockMessageRepo.editMessage.mockReturnValue(true);
+      mockMessageRepo.getMessage.mockReturnValue(mockEditedMessage);
       mockContextManager.reprocessMessageContext.mockResolvedValue(undefined);
 
       const result = await chatManager.editMessage("msg-1", "Edited message", ChainType.LLM_CHAIN);
@@ -645,6 +650,9 @@ describe("ChatManager", () => {
 
         mockPlugin.app.workspace.getActiveFile.mockReturnValue(mockActiveFile);
         mockMessageRepo.editMessage.mockReturnValue(true);
+        mockMessageRepo.getMessage.mockReturnValue(
+          createMockMessage("msg-1", "Hello", USER_SENDER)
+        );
         mockContextManager.reprocessMessageContext.mockResolvedValue(undefined);
 
         const result = await chatManager.editMessage(

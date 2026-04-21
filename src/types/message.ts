@@ -81,6 +81,11 @@ export interface MessageContext {
   urls: string[];
   tags?: string[];
   folders?: string[];
+  /**
+   * Explicit folder anchor used only for vault-scoped `AGENTS.md` instruction resolution.
+   * This is intentionally distinct from `folders`, which control retrieval/search scope.
+   */
+  agentInstructionAnchor?: string;
   selectedTextContexts?: SelectedTextContext[];
   webTabs?: WebTabContext[];
 }

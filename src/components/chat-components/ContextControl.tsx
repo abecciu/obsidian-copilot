@@ -17,6 +17,9 @@ interface ChatControlsProps {
   showProgressCard: () => void;
   showIndexingCard?: () => void;
   lexicalEditorRef?: React.RefObject<any>;
+  extraControls?: React.ReactNode;
+  extraBadges?: React.ReactNode;
+  hasExtraContext?: boolean;
 
   // Unified handlers
   onAddToContext: (category: string, data: any) => void;
@@ -36,6 +39,9 @@ export const ContextControl: React.FC<ChatControlsProps> = ({
   showProgressCard,
   showIndexingCard,
   lexicalEditorRef,
+  extraControls,
+  extraBadges,
+  hasExtraContext,
   onAddToContext,
   onRemoveFromContext,
 }) => {
@@ -66,6 +72,9 @@ export const ContextControl: React.FC<ChatControlsProps> = ({
       showProgressCard={showProgressCard}
       showIndexingCard={showIndexingCard}
       onTypeaheadSelect={handleTypeaheadSelect}
+      extraControls={extraControls}
+      extraBadges={extraBadges}
+      hasExtraContext={hasExtraContext}
       lexicalEditorRef={lexicalEditorRef}
     />
   );

@@ -291,6 +291,26 @@ describe("sanitizeSettings - pi backend settings", () => {
       },
     ]);
   });
+
+  it("defaults malformed vault agent instruction toggle values", () => {
+    const sanitized = sanitizeSettings({
+      ...DEFAULT_SETTINGS,
+      enableVaultAgentInstructions: "yes" as any,
+    });
+
+    expect(sanitized.enableVaultAgentInstructions).toBe(
+      DEFAULT_SETTINGS.enableVaultAgentInstructions
+    );
+  });
+
+  it("preserves explicit vault agent instruction toggle values", () => {
+    const sanitized = sanitizeSettings({
+      ...DEFAULT_SETTINGS,
+      enableVaultAgentInstructions: false,
+    });
+
+    expect(sanitized.enableVaultAgentInstructions).toBe(false);
+  });
 });
 
 describe("getSystemPrompt", () => {

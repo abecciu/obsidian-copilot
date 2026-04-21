@@ -1112,6 +1112,7 @@ ${formattedContent}`;
             urls: ["https://typescriptlang.org"],
             tags: ["programming", "typescript"],
             folders: ["docs/"],
+            agentInstructionAnchor: "Work/ClientA",
             webTabs: [
               {
                 url: "https://example.com/",
@@ -1180,6 +1181,7 @@ ${formattedContent}`;
       expect(parsedMessages[0].context.tags).toEqual(["programming", "typescript"]);
       expect(parsedMessages[0].context.folders).toHaveLength(1);
       expect(parsedMessages[0].context.folders[0]).toBe("docs/");
+      expect(parsedMessages[0].context.agentInstructionAnchor).toBe("Work/ClientA");
       expect(parsedMessages[0].context.webTabs).toHaveLength(3);
       expect(parsedMessages[0].context.webTabs[0].url).toBe("https://example.com/");
       expect(parsedMessages[0].context.webTabs[1].url).toBe("https://lucide.dev/");
@@ -1312,6 +1314,25 @@ tags:
       expect(parsedMessages).toHaveLength(2);
       expect(parsedMessages[0].context).toBeUndefined();
       expect(parsedMessages[1].context).toBeUndefined();
+    });
+
+    it("should preserve anchor-only context when parsing saved chats", async () => {
+      const content = `---
+epoch: 1695513480000
+modelKey: gpt-4
+tags:
+  - copilot-conversation
+---
+
+**user**: Rewrite this note with the same project conventions.
+[Context: Anchor: Work/ClientA]
+[Timestamp: 2024/09/23 22:18:00]`;
+
+      const parsedMessages = (persistenceManager as any).parseChatContent(content);
+
+      expect(parsedMessages).toHaveLength(1);
+      expect(parsedMessages[0].context).toBeDefined();
+      expect(parsedMessages[0].context.agentInstructionAnchor).toBe("Work/ClientA");
     });
   });
 

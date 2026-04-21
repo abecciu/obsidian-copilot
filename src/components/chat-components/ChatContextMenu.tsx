@@ -36,6 +36,9 @@ interface ChatContextMenuProps {
   showProgressCard: () => void;
   showIndexingCard?: () => void;
   onTypeaheadSelect: (category: string, data: any) => void;
+  extraControls?: React.ReactNode;
+  extraBadges?: React.ReactNode;
+  hasExtraContext?: boolean;
   lexicalEditorRef?: React.RefObject<any>;
 }
 
@@ -109,6 +112,9 @@ export const ChatContextMenu: React.FC<ChatContextMenuProps> = ({
   showProgressCard,
   showIndexingCard,
   onTypeaheadSelect,
+  extraControls,
+  extraBadges,
+  hasExtraContext = false,
   lexicalEditorRef,
 }) => {
   const [currentChain] = useChainType();
@@ -164,6 +170,7 @@ export const ChatContextMenu: React.FC<ChatContextMenuProps> = ({
     uniqueUrls.length > 0 ||
     selectedTextContexts.length > 0 ||
     contextFolders.length > 0 ||
+    hasExtraContext ||
     uniqueWebTabs.length > 0 ||
     activeNoteVisible ||
     activeWebTabVisible;
@@ -207,8 +214,10 @@ export const ChatContextMenu: React.FC<ChatContextMenuProps> = ({
             />
           </PopoverContent>
         </Popover>
+        {extraControls}
       </div>
       <div className="tw-flex tw-flex-1 tw-flex-wrap tw-gap-1">
+        {extraBadges}
         {activeNoteVisible && currentActiveFile && (
           <ContextActiveNoteBadge
             currentActiveFile={currentActiveFile}

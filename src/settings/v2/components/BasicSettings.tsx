@@ -184,6 +184,16 @@ export const BasicSettings: React.FC = () => {
                 />
 
                 <SettingItem
+                  type="switch"
+                  title="Vault `AGENTS.md` Instructions"
+                  description="When enabled, Pi loads folder-scoped `AGENTS.md` files from the current anchor or active note and appends them to the system prompt. Root files apply globally and deeper folders override broader ones."
+                  checked={settings.enableVaultAgentInstructions}
+                  onCheckedChange={(checked) =>
+                    updateSetting("enableVaultAgentInstructions", checked)
+                  }
+                />
+
+                <SettingItem
                   type="custom"
                   title="Pi API Key"
                   description="API key used by the local pi backend. License checks are bypassed while the pi backend is active."

@@ -312,6 +312,10 @@ export class ChatPersistenceManager {
             contextParts.push(`Folders: ${message.context.folders.join(", ")}`);
           }
 
+          if (message.context.agentInstructionAnchor) {
+            contextParts.push(`Anchor: ${message.context.agentInstructionAnchor}`);
+          }
+
           if (contextParts.length > 0) {
             content += `\n[Context: ${contextParts.join(" | ")}]`;
           }
@@ -505,6 +509,11 @@ export class ChatPersistenceManager {
         if (foldersStr) {
           context.folders = foldersStr.split(", ").map((folder) => folder.trim());
         }
+      } else if (trimmed.startsWith("Anchor: ")) {
+        const anchorStr = trimmed.substring(8); // Remove "Anchor: "
+        if (anchorStr) {
+          context.agentInstructionAnchor = anchorStr.trim();
+        }
       }
     }
 
@@ -514,7 +523,8 @@ export class ChatPersistenceManager {
       context.urls.length > 0 ||
       context.tags.length > 0 ||
       context.folders.length > 0 ||
-      context.webTabs.length > 0
+      context.webTabs.length > 0 ||
+      Boolean(context.agentInstructionAnchor)
     ) {
       return context;
     }

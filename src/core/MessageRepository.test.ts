@@ -57,6 +57,7 @@ describe("MessageRepository", () => {
       const context: MessageContext = {
         notes: [mockFile],
         urls: ["https://example.com"],
+        agentInstructionAnchor: "Work/ClientA",
         selectedTextContexts: [],
       };
 
@@ -65,6 +66,24 @@ describe("MessageRepository", () => {
       const message = messageRepo.getMessage(messageId);
       expect(message?.context).toEqual(context);
       expect(message?.contextEnvelope).toBeUndefined();
+    });
+
+    it("should preserve agent instruction anchor through message retrieval", () => {
+      const context: MessageContext = {
+        notes: [],
+        urls: [],
+        agentInstructionAnchor: "Work/ClientA",
+        selectedTextContexts: [],
+      };
+
+      const messageId = messageRepo.addMessage("Hello", "Hello with context", "user", context);
+
+      expect(messageRepo.getMessage(messageId)?.context?.agentInstructionAnchor).toBe(
+        "Work/ClientA"
+      );
+      expect(messageRepo.getLLMMessage(messageId)?.context?.agentInstructionAnchor).toBe(
+        "Work/ClientA"
+      );
     });
 
     it("should store both display and processed text", () => {
@@ -103,6 +122,33 @@ describe("MessageRepository", () => {
 
       const messages = messageRepo.getDisplayMessages();
       expect(messages).toHaveLength(0);
+    });
+  });
+
+  describe("loadMessages", () => {
+    it("should preserve agent instruction anchor when loading persisted messages", () => {
+      const loadedContext: MessageContext = {
+        notes: [],
+        urls: [],
+        agentInstructionAnchor: "Projects/Alpha",
+        selectedTextContexts: [],
+      };
+
+      messageRepo.loadMessages([
+        {
+          id: "loaded-1",
+          message: "Loaded message",
+          originalMessage: "Loaded message",
+          sender: "user",
+          timestamp: mockFormattedDateTime,
+          isVisible: true,
+          context: loadedContext,
+        },
+      ]);
+
+      expect(messageRepo.getMessage("loaded-1")?.context?.agentInstructionAnchor).toBe(
+        "Projects/Alpha"
+      );
     });
   });
 

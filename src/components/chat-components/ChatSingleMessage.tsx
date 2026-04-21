@@ -39,6 +39,10 @@ import { App, Component, MarkdownRenderer, MarkdownView, TFile } from "obsidian"
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSettingsValue } from "@/settings/model";
 import {
+  hasPiMessageContextBadges,
+  renderPiMessageContextBadges,
+} from "@/pi/PiChatContextExtensions";
+import {
   buildCopilotCollapsibleDomId,
   captureCopilotCollapsibleOpenStates,
   getCopilotCollapsibleDetailsFromEvent,
@@ -194,6 +198,8 @@ export const linkInlineCitations = (root: HTMLElement): void => {
 };
 
 function MessageContext({ context }: { context: ChatMessage["context"] }) {
+  const piMessageContextBadges = renderPiMessageContextBadges(context);
+
   if (
     !context ||
     (!context.notes?.length &&
@@ -201,6 +207,7 @@ function MessageContext({ context }: { context: ChatMessage["context"] }) {
       !context.webTabs?.length &&
       !context.tags?.length &&
       !context.folders?.length &&
+      !hasPiMessageContextBadges(context) &&
       !context.selectedTextContexts?.length)
   ) {
     return null;
@@ -267,6 +274,7 @@ function MessageContext({ context }: { context: ChatMessage["context"] }) {
           <TooltipContent className="tw-max-w-sm tw-break-words">{folder}</TooltipContent>
         </Tooltip>
       ))}
+      {piMessageContextBadges}
       {context.selectedTextContexts?.map((selectedText, index) => (
         <Tooltip key={`selectedText-${index}-${selectedText.id}`}>
           <TooltipTrigger asChild>

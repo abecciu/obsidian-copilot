@@ -48,6 +48,7 @@ export const InlineMessageEditor: React.FC<InlineMessageEditorProps> = ({
         urls: string[];
         tags: string[];
         folders: string[];
+        agentInstructionAnchor?: string;
       }
     ) => {
       // Convert back to ChatMessage context format
@@ -56,6 +57,7 @@ export const InlineMessageEditor: React.FC<InlineMessageEditorProps> = ({
         urls: context.urls,
         tags: context.tags,
         folders: context.folders,
+        agentInstructionAnchor: context.agentInstructionAnchor,
         selectedTextContexts: initialContext?.selectedTextContexts || [],
       };
 
@@ -96,6 +98,7 @@ export const InlineMessageEditor: React.FC<InlineMessageEditorProps> = ({
     urls: initialContext?.urls || [],
     tags: initialContext?.tags || [],
     folders: initialContext?.folders || [],
+    agentInstructionAnchor: initialContext?.agentInstructionAnchor,
   };
 
   return (

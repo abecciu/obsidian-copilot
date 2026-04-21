@@ -218,6 +218,8 @@ export interface CopilotSettings {
   autoAddSelectionToContext: boolean;
   /** Automatically accept file edits without showing preview confirmation */
   autoAcceptEdits: boolean;
+  /** Enable vault-scoped `AGENTS.md` instructions for the Pi backend */
+  enableVaultAgentInstructions: boolean;
   /** Preferred diff view mode: side-by-side or split */
   diffViewMode: "side-by-side" | "split";
   /** Folder where user system prompts are stored */
@@ -715,6 +717,11 @@ export function sanitizeSettings(settings: CopilotSettings): CopilotSettings {
   // Ensure autoAcceptEdits has a default value
   if (typeof sanitizedSettings.autoAcceptEdits !== "boolean") {
     sanitizedSettings.autoAcceptEdits = DEFAULT_SETTINGS.autoAcceptEdits;
+  }
+
+  // Ensure enableVaultAgentInstructions has a default value
+  if (typeof sanitizedSettings.enableVaultAgentInstructions !== "boolean") {
+    sanitizedSettings.enableVaultAgentInstructions = DEFAULT_SETTINGS.enableVaultAgentInstructions;
   }
 
   // Ensure defaultSendShortcut has a valid value

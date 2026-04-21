@@ -34,8 +34,10 @@ import { ABORT_REASON } from "@/constants";
 import { logError } from "@/logger";
 import { renderPiAssistantMessage, renderPiAssistantTranscript } from "@/pi/PiMessageRendering";
 import { resolvePiApiKey, resolvePiModel } from "@/pi/PiModelResolver";
+import { augmentPiSystemPromptForTurn } from "@/pi/PiSystemPromptAugmentor";
 import { useSettingsValue } from "@/settings/model";
 import { useRafThrottledCallback } from "@/hooks/use-raf-throttled-callback";
+import type { TFile, Vault } from "obsidian";
 
 export interface StreamingChatTurnContext {
   /** Abort signal for the current turn (covers prompt-building + streaming). */
@@ -149,6 +151,43 @@ function stringifyPiToolResult(result: unknown): string {
   }
 
   return JSON.stringify(result, null, 2);
+}
+
+interface ObsidianGlobalApp {
+  vault?: Vault;
+  workspace?: {
+    getActiveFile?: () => TFile | null;
+  };
+}
+
+/**
+ * Safely access the global Obsidian app instance from shared streaming surfaces.
+ *
+ * @returns Global Obsidian app when available, otherwise `null`.
+ */
+function getObsidianGlobalApp(): ObsidianGlobalApp | null {
+  return (globalThis as typeof globalThis & { app?: ObsidianGlobalApp }).app ?? null;
+}
+
+/**
+ * Resolve the effective Pi system prompt for the current turn, including optional
+ * vault-scoped `AGENTS.md` instructions derived from the active note context.
+ *
+ * @param params - Base prompt and feature enablement for the current turn.
+ * @returns Final system prompt to send to the Pi runtime.
+ */
+export async function resolvePiSystemPromptForTurn(params: {
+  basePrompt: string;
+  enableVaultAgentInstructions: boolean;
+}): Promise<string> {
+  const obsidianApp = getObsidianGlobalApp();
+  return augmentPiSystemPromptForTurn({
+    agentBackend: "pi",
+    enableVaultAgentInstructions: params.enableVaultAgentInstructions,
+    basePrompt: params.basePrompt,
+    vault: obsidianApp?.vault,
+    activeFile: obsidianApp?.workspace?.getActiveFile?.() ?? null,
+  });
 }
 
 /**
@@ -382,6 +421,12 @@ export function useStreamingChatSession(
         if (!prompt.trim()) return null;
 
         if (isPiMode) {
+          const resolvedSystemPrompt = await resolvePiSystemPromptForTurn({
+            basePrompt: systemPrompt,
+            enableVaultAgentInstructions: settings.enableVaultAgentInstructions !== false,
+          });
+          if (abortController.signal.aborted) return null;
+
           const resolvedPiModelId = (piModelId || settings.piAgent.modelId || "").trim();
           const resolvedModel = resolvePiModel(resolvedPiModelId);
           const resolvedPiThinkingLevel = resolvePiThinkingLevel(
@@ -516,7 +561,7 @@ export function useStreamingChatSession(
           const agent = new Agent({
             initialState: {
               model: resolvedModel,
-              systemPrompt,
+              systemPrompt: resolvedSystemPrompt,
               thinkingLevel: resolvedPiThinkingLevel,
               tools: [],
               messages: piMessagesRef.current.slice(),
@@ -692,6 +737,7 @@ export function useStreamingChatSession(
       piModelId,
       piThinkingLevel,
       setStreamingTextThrottled,
+      settings.enableVaultAgentInstructions,
       settings.piAgent.modelId,
       settings.piAgent.thinkingLevel,
       systemPrompt,

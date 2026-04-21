@@ -707,6 +707,7 @@ describe("parseCustomCommandFile", () => {
     expect(result).toEqual({
       title: "Test Command",
       modelKey: "gpt-4",
+      piModelId: "",
       content: "Prompt content here.",
       showInContextMenu: true,
       showInSlashMenu: false,
@@ -725,6 +726,7 @@ describe("parseCustomCommandFile", () => {
     expect(result).toEqual({
       title: "Test Command",
       modelKey: "",
+      piModelId: "",
       content: "Prompt content only, no frontmatter.",
       showInContextMenu: true,
       showInSlashMenu: true,

@@ -108,7 +108,7 @@ export const AdvancedSettings: React.FC = () => {
         <SettingItem
           type="switch"
           title="Debug Mode"
-          description="Debug mode will log some debug message to the console."
+          description="Debug mode logs diagnostic details to the console and exported log file, including vault `AGENTS.md` anchor/provenance when Pi instruction resolution runs."
           checked={settings.debug}
           onCheckedChange={(checked) => {
             updateSetting("debug", checked);

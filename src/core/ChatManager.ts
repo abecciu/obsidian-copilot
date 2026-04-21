@@ -19,6 +19,7 @@ import { MessageRepository } from "./MessageRepository";
 import { ChatPersistenceManager } from "./ChatPersistenceManager";
 import { ACTIVE_WEB_TAB_MARKER, USER_SENDER } from "@/constants";
 import { TFile, Vault } from "obsidian";
+import { augmentPiSystemPromptForTurn } from "@/pi/PiSystemPromptAugmentor";
 import { getWebViewerService } from "@/services/webViewerService/webViewerServiceSingleton";
 import {
   normalizeUrlForMatching,
@@ -224,13 +225,16 @@ export class ChatManager {
    * @param chainType - The chain type being used
    * @param vault - Vault used to resolve note/tag templates
    * @param activeNote - Active note used for {activeNote} resolution
+   * @param context - Message context used to resolve vault-scoped `AGENTS.md` instructions
    * @returns Processed system prompt and included files (for deduplication)
    */
   private async getSystemPromptForMessage(
     chainType: ChainType,
     vault: Vault,
-    activeNote: TFile | null
+    activeNote: TFile | null,
+    context?: MessageContext
   ): Promise<ProcessedPromptResult> {
+    const settings = getSettings();
     // Use getEffectiveUserPrompt to ensure consistency with getSystemPrompt (includes legacy fallback)
     const userCustomPrompt = getEffectiveUserPrompt();
     const allIncludedFiles: TFile[] = [];
@@ -273,11 +277,13 @@ export class ChatManager {
       processedBasePromptWithMemory = nextProcessedBasePromptWithMemory;
     }
 
+    let finalProcessedPrompt = processedBasePromptWithMemory;
+
     // Special case: Add project context for project chain
     if (chainType === ChainType.PROJECT_CHAIN) {
       const project = getCurrentProject();
       if (project) {
-        const context = await ProjectManager.instance.getProjectContext(project.id);
+        const projectContext = await ProjectManager.instance.getProjectContext(project.id);
 
         // Process project system prompt templates too
         const projectPromptResult = await this.processSystemPromptTemplates(
@@ -290,31 +296,37 @@ export class ChatManager {
         let result = `${processedBasePromptWithMemory}\n\n<project_system_prompt>\n${projectPromptResult.processedPrompt}\n</project_system_prompt>`;
 
         // Only add project_context block if context exists
-        if (context) {
+        if (projectContext) {
           // TODO: Remove this temporary hard cap once proper token budget enforcement
           // is implemented (see designdocs/todo/TOKEN_BUDGET_ENFORCEMENT.md Phase 1).
           // Hard cap to prevent total payload from exceeding model context windows.
           // 600k tokens ≈ 2.4M chars leaves room for L2+L3+L4+L5 within ~1M total.
           const MAX_PROJECT_CONTEXT_CHARS = 600_000 * 4;
-          let projectContext = context;
-          if (context.length > MAX_PROJECT_CONTEXT_CHARS) {
-            projectContext = context.substring(0, MAX_PROJECT_CONTEXT_CHARS);
+          let truncatedProjectContext = projectContext;
+          if (projectContext.length > MAX_PROJECT_CONTEXT_CHARS) {
+            truncatedProjectContext = projectContext.substring(0, MAX_PROJECT_CONTEXT_CHARS);
             logWarn(
-              `Project context truncated from ${Math.round(context.length / 4000)}k to ${Math.round(MAX_PROJECT_CONTEXT_CHARS / 4000)}k estimated tokens to stay within token budget`
+              `Project context truncated from ${Math.round(projectContext.length / 4000)}k to ${Math.round(MAX_PROJECT_CONTEXT_CHARS / 4000)}k estimated tokens to stay within token budget`
             );
           }
-          result += `\n\n<project_context>\n${projectContext}\n</project_context>`;
+          result += `\n\n<project_context>\n${truncatedProjectContext}\n</project_context>`;
         }
 
-        return {
-          processedPrompt: result,
-          includedFiles: allIncludedFiles,
-        };
+        finalProcessedPrompt = result;
       }
     }
 
+    finalProcessedPrompt = await augmentPiSystemPromptForTurn({
+      agentBackend: settings.agentBackend,
+      enableVaultAgentInstructions: settings.enableVaultAgentInstructions !== false,
+      basePrompt: finalProcessedPrompt,
+      vault,
+      activeFile: activeNote,
+      context,
+    });
+
     return {
-      processedPrompt: processedBasePromptWithMemory,
+      processedPrompt: finalProcessedPrompt,
       includedFiles: allIncludedFiles,
     };
   }
@@ -469,7 +481,12 @@ export class ChatManager {
 
       // Get system prompt for L1 layer (includes project context if in project mode)
       const { processedPrompt: systemPrompt, includedFiles: systemPromptIncludedFiles } =
-        await this.getSystemPromptForMessage(chainType, this.plugin.app.vault, activeNote);
+        await this.getSystemPromptForMessage(
+          chainType,
+          this.plugin.app.vault,
+          activeNote,
+          message.context
+        );
 
       // Process context to generate LLM content
       const { processedContent, contextEnvelope } = await this.contextManager.processMessageContext(
@@ -515,8 +532,13 @@ export class ChatManager {
     try {
       logInfo(`[ChatManager] Editing message ${messageId}: "${newText}"`);
 
-      // Edit the message text only - context remains unchanged (see design note above)
       const currentRepo = this.getCurrentMessageRepo();
+      const existingMessage = currentRepo.getMessage(messageId);
+      if (!existingMessage) {
+        return false;
+      }
+
+      // Edit the message text only - context remains unchanged (see design note above)
       const editSuccess = currentRepo.editMessage(messageId, newText);
       if (!editSuccess) {
         return false;
@@ -525,7 +547,12 @@ export class ChatManager {
       // Reprocess context for the edited message
       const activeNote = this.plugin.app.workspace.getActiveFile();
       const { processedPrompt: systemPrompt, includedFiles: systemPromptIncludedFiles } =
-        await this.getSystemPromptForMessage(chainType, this.plugin.app.vault, activeNote);
+        await this.getSystemPromptForMessage(
+          chainType,
+          this.plugin.app.vault,
+          activeNote,
+          existingMessage.context
+        );
       await this.contextManager.reprocessMessageContext(
         messageId,
         currentRepo,
@@ -614,7 +641,12 @@ export class ChatManager {
         const chainType = getChainType();
         const activeNote = this.plugin.app.workspace.getActiveFile();
         const { processedPrompt: systemPrompt, includedFiles: systemPromptIncludedFiles } =
-          await this.getSystemPromptForMessage(chainType, this.plugin.app.vault, activeNote);
+          await this.getSystemPromptForMessage(
+            chainType,
+            this.plugin.app.vault,
+            activeNote,
+            userMessage.context
+          );
         await this.contextManager.reprocessMessageContext(
           userMessage.id,
           currentRepo,

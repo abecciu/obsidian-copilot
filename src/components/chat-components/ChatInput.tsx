@@ -37,6 +37,7 @@ import { $removePillsByFolder } from "./pills/FolderPillNode";
 import { $removePillsByToolName, $createToolPillNode } from "./pills/ToolPillNode";
 import { $removeActiveWebTabPills } from "./pills/ActiveWebTabPillNode";
 import { $findWebTabPills, $removeWebTabPillsByUrl } from "./pills/WebTabPillNode";
+import { usePiAgentInstructionComposerExtension } from "@/pi/PiChatContextExtensions";
 import LexicalEditor from "./LexicalEditor";
 
 interface ChatInputProps {
@@ -47,6 +48,7 @@ interface ChatInputProps {
     urls?: string[];
     contextNotes?: TFile[];
     contextFolders?: string[];
+    agentInstructionAnchor?: string;
     webTabs?: WebTabContext[];
   }) => void;
   isGenerating: boolean;
@@ -76,6 +78,7 @@ interface ChatInputProps {
       notes: TFile[];
       urls: string[];
       folders: string[];
+      agentInstructionAnchor?: string;
     }
   ) => void;
   onEditCancel?: () => void;
@@ -83,6 +86,7 @@ interface ChatInputProps {
     notes?: TFile[];
     urls?: string[];
     folders?: string[];
+    agentInstructionAnchor?: string;
   };
 }
 
@@ -135,6 +139,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const [toolsFromPills, setToolsFromPills] = useState<string[]>([]);
   const [webTabsFromPills, setWebTabsFromPills] = useState<WebTabContext[]>([]);
   const isCopilotPlus = isPlusChain(currentChain);
+  const piAgentInstructionExtension = usePiAgentInstructionComposerExtension({
+    app,
+    currentActiveFile: currentActiveNote,
+    lexicalEditorRef,
+    initialAnchor: initialContext?.agentInstructionAnchor,
+    enabled: settings.agentBackend === "pi" && settings.enableVaultAgentInstructions !== false,
+  });
+  const agentInstructionAnchor = piAgentInstructionExtension.agentInstructionAnchor;
 
   // Merge badge-only contextWebTabs with pills-derived webTabsFromPills for display
   // Uses shared normalization policy from urlNormalization.ts
@@ -234,6 +246,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
         notes: contextNotes,
         urls: contextUrls,
         folders: contextFolders,
+        agentInstructionAnchor,
       });
       return;
     }
@@ -250,6 +263,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
       // - contextFolders: {folderPath} in text gets expanded by processPrompt()
       // - webTabs: passed here, Active Web Tab injected by ChatManager
       handleSendMessage({
+        agentInstructionAnchor,
         webTabs: allWebTabs,
       });
       return;
@@ -279,6 +293,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
       contextNotes,
       urls: contextUrls,
       contextFolders,
+      agentInstructionAnchor,
       webTabs: allWebTabs,
     });
   };
@@ -385,6 +400,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
   // Unified handler for adding to context (from popover @ mention)
   const handleAddToContext = (category: string, data: any) => {
+    if (piAgentInstructionExtension.handleAddToContext(category, data)) {
+      return;
+    }
+
     switch (category) {
       case "activeNote":
         // Set active note context flag (no pill needed - context badge shows it)
@@ -472,6 +491,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
   // Unified handler for removing from context (from context menu badges)
   const handleRemoveFromContext = (category: string, data: any) => {
+    if (piAgentInstructionExtension.handleRemoveFromContext(category, data)) {
+      return;
+    }
+
     switch (category) {
       case "activeNote":
         // Remove active note pill from editor and turn off flag
@@ -739,6 +762,9 @@ const ChatInput: React.FC<ChatInputProps> = ({
           showProgressCard={showProgressCard}
           showIndexingCard={showIndexingCard}
           lexicalEditorRef={lexicalEditorRef}
+          extraControls={piAgentInstructionExtension.contextMenuControls}
+          extraBadges={piAgentInstructionExtension.contextBadges}
+          hasExtraContext={piAgentInstructionExtension.hasContext}
           onAddToContext={handleAddToContext}
           onRemoveFromContext={handleRemoveFromContext}
         />

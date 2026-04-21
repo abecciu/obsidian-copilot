@@ -1029,6 +1029,7 @@ export const DEFAULT_SETTINGS: CopilotSettings = {
   autoIncludeTextSelection: false,
   autoAddSelectionToContext: false,
   autoAcceptEdits: false,
+  enableVaultAgentInstructions: true,
   diffViewMode: "split",
   userSystemPromptsFolder: DEFAULT_SYSTEM_PROMPTS_FOLDER,
   defaultSystemPromptTitle: "",
