@@ -7,14 +7,75 @@ import { SemanticSearchToggleModal } from "@/components/modals/SemanticSearchTog
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { getModelDisplayWithIcons } from "@/components/ui/model-display";
 import { SettingItem } from "@/components/ui/setting-item";
-import { VAULT_VECTOR_STORE_STRATEGIES } from "@/constants";
+import { BUILTIN_EMBEDDING_MODELS, VAULT_VECTOR_STORE_STRATEGIES } from "@/constants";
+import EmbeddingManager from "@/LLMProviders/embeddingManager";
 import { getModelKeyFromModel, updateSetting, useSettingsValue } from "@/settings/model";
+import { ModelAddDialog } from "@/settings/v2/components/ModelAddDialog";
+import { ModelEditModal } from "@/settings/v2/components/ModelEditDialog";
+import { ModelTable } from "@/settings/v2/components/ModelTable";
 import { PatternListEditor } from "@/settings/v2/components/PatternListEditor";
 
 export const QASettings: React.FC = () => {
   const settings = useSettingsValue();
   const isMiyoSearchActive = settings.enableMiyo;
   const visibleEmbeddingModels = settings.activeEmbeddingModels;
+  const [showAddEmbeddingDialog, setShowAddEmbeddingDialog] = React.useState(false);
+
+  /**
+   * Delete an embedding model from settings.
+   */
+  const onDeleteEmbeddingModel = (modelKey: string) => {
+    const [modelName, provider] = modelKey.split("|");
+    const updatedModels = settings.activeEmbeddingModels.filter(
+      (model) => !(model.name === modelName && model.provider === provider)
+    );
+    updateSetting("activeEmbeddingModels", updatedModels);
+  };
+
+  /**
+   * Handle direct embedding model row updates.
+   */
+  const handleEmbeddingModelUpdate = (
+    updatedModel: (typeof settings.activeEmbeddingModels)[number]
+  ) => {
+    const updatedModels = settings.activeEmbeddingModels.map((model) =>
+      model.name === updatedModel.name && model.provider === updatedModel.provider
+        ? updatedModel
+        : model
+    );
+    updateSetting("activeEmbeddingModels", updatedModels);
+  };
+
+  /**
+   * Handle embedding model reorder operations.
+   */
+  const handleEmbeddingModelReorder = (newModels: typeof settings.activeEmbeddingModels) => {
+    updateSetting("activeEmbeddingModels", newModels);
+  };
+
+  /**
+   * Restore built-in embedding models while preserving custom entries.
+   */
+  const handleRefreshEmbeddingModels = () => {
+    const customModels = settings.activeEmbeddingModels.filter((model) => !model.isBuiltIn);
+    updateSetting("activeEmbeddingModels", [...BUILTIN_EMBEDDING_MODELS, ...customModels]);
+    new Notice("Embedding models refreshed successfully");
+  };
+
+  /**
+   * Open the embedding model edit modal.
+   */
+  const handleEditEmbeddingModel = (model: (typeof settings.activeEmbeddingModels)[number]) => {
+    const modal = new ModelEditModal(app, model, true, (_isEmbedding, original, updated) => {
+      const updatedModels = settings.activeEmbeddingModels.map((currentModel) =>
+        currentModel.name === original.name && currentModel.provider === original.provider
+          ? updated
+          : currentModel
+      );
+      updateSetting("activeEmbeddingModels", updatedModels);
+    });
+    modal.open();
+  };
 
   const handleSetDefaultEmbeddingModel = async (modelKey: string) => {
     if (modelKey === settings.embeddingModelKey) return;
@@ -312,6 +373,39 @@ export const QASettings: React.FC = () => {
             onCheckedChange={(checked) => updateSetting("disableIndexOnMobile", checked)}
           />
         </div>
+      </section>
+
+      <section>
+        <ModelTable
+          models={settings.activeEmbeddingModels}
+          onEdit={handleEditEmbeddingModel}
+          onDelete={onDeleteEmbeddingModel}
+          onCopy={(model) =>
+            updateSetting("activeEmbeddingModels", [
+              ...settings.activeEmbeddingModels,
+              {
+                ...model,
+                name: `${model.name} (copy)`,
+                isBuiltIn: false,
+              },
+            ])
+          }
+          onAdd={() => setShowAddEmbeddingDialog(true)}
+          onUpdateModel={handleEmbeddingModelUpdate}
+          onReorderModels={handleEmbeddingModelReorder}
+          onRefresh={handleRefreshEmbeddingModels}
+          title="Embedding Models"
+        />
+
+        <ModelAddDialog
+          open={showAddEmbeddingDialog}
+          onOpenChange={setShowAddEmbeddingDialog}
+          onAdd={(model) => {
+            updateSetting("activeEmbeddingModels", [...settings.activeEmbeddingModels, model]);
+          }}
+          isEmbeddingModel={true}
+          ping={(model) => EmbeddingManager.getInstance().ping(model)}
+        />
       </section>
     </div>
   );

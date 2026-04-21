@@ -7,9 +7,10 @@ const DEFAULT_CONTEXT_WINDOW = 128000;
 /**
  * Resolve the configured pi model into a concrete pi-ai model object.
  */
-export function resolvePiModel(): Model<Api> {
+export function resolvePiModel(modelIdOverride?: string): Model<Api> {
   const settings = getSettings();
-  const { apiMode, provider, baseUrl, modelId } = settings.piAgent;
+  const { apiMode, provider, baseUrl } = settings.piAgent;
+  const modelId = modelIdOverride?.trim() || settings.piAgent.modelId;
 
   if (!baseUrl.trim() || !modelId.trim()) {
     throw new Error(

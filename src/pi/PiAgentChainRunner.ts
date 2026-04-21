@@ -3,8 +3,10 @@ import { deduplicateSources } from "@/LLMProviders/chainRunner/utils/toolExecuti
 import { getSettings } from "@/settings/model";
 import { ChatMessage, ResponseMetadata } from "@/types/message";
 import { Agent, type AgentEvent } from "@mariozechner/pi-agent-core";
+import { getCurrentProject } from "@/aiParams";
 import { BaseChainRunner } from "@/LLMProviders/chainRunner/BaseChainRunner";
 import { buildPiConversation } from "./PiMessageAdapter";
+import { resolvePiChatModelId } from "./PiModelCatalog";
 import { resolvePiApiKey, resolvePiModel } from "./PiModelResolver";
 import { getPiTools, type PiToolDetails, type PiToolSource } from "./PiToolRegistry";
 import { ToolManager } from "@/tools/toolManager";
@@ -38,7 +40,11 @@ export class PiAgentChainRunner extends BaseChainRunner {
     }
   ): Promise<string> {
     try {
-      const model = resolvePiModel();
+      const modelId =
+        this.chainType === ChainType.PROJECT_CHAIN
+          ? resolvePiChatModelId(getSettings(), getCurrentProject())
+          : resolvePiChatModelId();
+      const model = resolvePiModel(modelId);
       const apiKey = await resolvePiApiKey();
       const memoryVariables = await this.chainManager.memoryManager
         .getMemory()

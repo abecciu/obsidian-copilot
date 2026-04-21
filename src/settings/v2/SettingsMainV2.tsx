@@ -6,6 +6,7 @@ import { useLatestVersion } from "@/hooks/useLatestVersion";
 import CopilotPlugin from "@/main";
 import { resetSettings } from "@/settings/model";
 import { CommandSettings } from "@/settings/v2/components/CommandSettings";
+import { PiModelSettings } from "@/settings/v2/components/PiModelSettings";
 import { Cog, Command, Cpu, Database, Sparkles, Wrench } from "lucide-react";
 import React from "react";
 import { AdvancedSettings } from "./components/AdvancedSettings";
@@ -13,6 +14,7 @@ import { BasicSettings } from "./components/BasicSettings";
 import { CopilotPlusSettings } from "./components/CopilotPlusSettings";
 import { ModelSettings } from "./components/ModelSettings";
 import { QASettings } from "./components/QASettings";
+import { useSettingsValue } from "@/settings/model";
 
 const TAB_IDS = ["basic", "model", "QA", "command", "plus", "advanced"] as const;
 type TabId = (typeof TAB_IDS)[number];
@@ -27,25 +29,25 @@ const icons: Record<TabId, JSX.Element> = {
   advanced: <Wrench className="tw-size-5" />,
 };
 
-// tab components
-const components: Record<TabId, React.FC> = {
-  basic: () => <BasicSettings />,
-  model: () => <ModelSettings />,
-  QA: () => <QASettings />,
-  command: () => <CommandSettings />,
-  plus: () => <CopilotPlusSettings />,
-  advanced: () => <AdvancedSettings />,
-};
-
-// tabs
-const tabs: TabItemType[] = TAB_IDS.map((id) => ({
-  id,
-  icon: icons[id],
-  label: id.charAt(0).toUpperCase() + id.slice(1),
-}));
-
 const SettingsContent: React.FC = () => {
+  const settings = useSettingsValue();
   const { selectedTab, setSelectedTab } = useTab();
+  const isPiMode = settings.agentBackend === "pi";
+
+  const components: Record<TabId, React.FC> = {
+    basic: () => <BasicSettings />,
+    model: () => (isPiMode ? <PiModelSettings /> : <ModelSettings />),
+    QA: () => <QASettings />,
+    command: () => <CommandSettings />,
+    plus: () => <CopilotPlusSettings />,
+    advanced: () => <AdvancedSettings />,
+  };
+
+  const tabs: TabItemType[] = TAB_IDS.map((id) => ({
+    id,
+    icon: icons[id],
+    label: id === "model" && isPiMode ? "Pi Models" : id.charAt(0).toUpperCase() + id.slice(1),
+  }));
 
   return (
     <div className="tw-flex tw-flex-col">

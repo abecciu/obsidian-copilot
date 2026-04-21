@@ -48,6 +48,14 @@ export interface LegacyCommandSettings {
 export type AgentBackend = "pi" | "upstream";
 export type PiAgentApiMode = "openai-completions" | "openai-responses";
 export type PiAgentThinkingLevel = "minimal" | "low" | "medium" | "high" | "xhigh";
+export type PiModelSource = "fetched" | "manual";
+
+export interface PiModelCatalogEntry {
+  id: string;
+  displayName: string;
+  enabled: boolean;
+  source: PiModelSource;
+}
 
 export interface PiAgentSettings {
   apiMode: PiAgentApiMode;
@@ -55,6 +63,7 @@ export interface PiAgentSettings {
   baseUrl: string;
   apiKey: string;
   modelId: string;
+  models: PiModelCatalogEntry[];
   thinkingLevel: PiAgentThinkingLevel;
   enabledToolIds: string[];
 }
@@ -194,6 +203,8 @@ export interface CopilotSettings {
   enableSavedMemory: boolean;
   /** Last selected model for quick command */
   quickCommandModelKey: string | undefined;
+  /** Last selected pi model for quick command */
+  quickCommandPiModelId: string | undefined;
   /** Last checkbox state for including note context in quick command */
   quickCommandIncludeNoteContext: boolean;
   /** Automatically add text selections to chat context */
@@ -422,6 +433,47 @@ export function sanitizeSettings(settings: CopilotSettings): CopilotSettings {
   } else {
     sanitizedPiAgent.modelId = sanitizedPiAgent.modelId.trim();
   }
+  if (!Array.isArray(sanitizedPiAgent.models)) {
+    sanitizedPiAgent.models = defaultPiAgent.models;
+  }
+  sanitizedPiAgent.models = sanitizedPiAgent.models
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+
+      const id = typeof entry.id === "string" ? entry.id.trim() : "";
+      if (!id) {
+        return null;
+      }
+
+      const displayName =
+        typeof entry.displayName === "string" && entry.displayName.trim().length > 0
+          ? entry.displayName.trim()
+          : id;
+
+      return {
+        id,
+        displayName,
+        enabled: typeof entry.enabled === "boolean" ? entry.enabled : true,
+        source: entry.source === "manual" ? "manual" : "fetched",
+      } satisfies PiModelCatalogEntry;
+    })
+    .filter((entry): entry is PiModelCatalogEntry => entry !== null);
+  if (
+    sanitizedPiAgent.models.length === 0 ||
+    !sanitizedPiAgent.models.some((entry) => entry.id === sanitizedPiAgent.modelId)
+  ) {
+    sanitizedPiAgent.models = [
+      {
+        id: sanitizedPiAgent.modelId,
+        displayName: sanitizedPiAgent.modelId,
+        enabled: true,
+        source: "manual",
+      },
+      ...sanitizedPiAgent.models.filter((entry) => entry.id !== sanitizedPiAgent.modelId),
+    ];
+  }
   if (!Array.isArray(sanitizedPiAgent.enabledToolIds)) {
     sanitizedPiAgent.enabledToolIds = defaultPiAgent.enabledToolIds;
   }
@@ -622,6 +674,14 @@ export function sanitizeSettings(settings: CopilotSettings): CopilotSettings {
     typeof settingsToSanitize.quickCommandModelKey !== "string"
   ) {
     sanitizedSettings.quickCommandModelKey = DEFAULT_SETTINGS.quickCommandModelKey;
+  }
+
+  // Ensure quickCommandPiModelId is either undefined or a string
+  if (
+    settingsToSanitize.quickCommandPiModelId !== undefined &&
+    typeof settingsToSanitize.quickCommandPiModelId !== "string"
+  ) {
+    sanitizedSettings.quickCommandPiModelId = DEFAULT_SETTINGS.quickCommandPiModelId;
   }
 
   // Ensure autoAddSelectionToContext has a default value (migrate from old settings)

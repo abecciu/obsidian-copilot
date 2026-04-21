@@ -14,6 +14,7 @@ import { logError } from "@/logger";
 import { CustomPromptSyntaxInstruction } from "@/components/CustomPromptSyntaxInstruction";
 import { CustomCommand } from "@/commands/type";
 import { validateCommandName } from "@/commands/customCommandUtils";
+import { getEnabledPiModels } from "@/pi/PiModelCatalog";
 
 type FormErrors = {
   title?: string;
@@ -38,6 +39,10 @@ function CustomCommandSettingsModalContent({
       label: getModelDisplayText(model),
       value: getModelKeyFromModel(model),
     }));
+  const activePiModels = getEnabledPiModels(settings).map((model) => ({
+    label: model.displayName,
+    value: model.id,
+  }));
   const [command, setCommand] = useState(initialCommand);
   const [errors, setErrors] = useState<FormErrors>({});
 
@@ -102,20 +107,26 @@ function CustomCommandSettingsModalContent({
         <Label htmlFor="modelKey">Model (Optional)</Label>
         <div className="tw-group tw-relative tw-w-full">
           <select
-            value={command.modelKey}
+            value={settings.agentBackend === "pi" ? (command.piModelId ?? "") : command.modelKey}
             onChange={(e) => {
               const value = e.target.value;
               if (!value) {
-                handleUpdate("modelKey", "");
+                handleUpdate(settings.agentBackend === "pi" ? "piModelId" : "modelKey", "");
                 return;
               }
-              const selectedModel = activeModels.find((m) => m.value === value);
+              const selectedModel =
+                settings.agentBackend === "pi"
+                  ? activePiModels.find((model) => model.value === value)
+                  : activeModels.find((model) => model.value === value);
               if (!selectedModel) {
                 logError(`Model ${value} not found`);
-                handleUpdate("modelKey", "");
+                handleUpdate(settings.agentBackend === "pi" ? "piModelId" : "modelKey", "");
                 return;
               }
-              handleUpdate("modelKey", e.target.value);
+              handleUpdate(
+                settings.agentBackend === "pi" ? "piModelId" : "modelKey",
+                e.target.value
+              );
             }}
             className={cn(
               "tw-w-full tw-appearance-none",
@@ -126,8 +137,12 @@ function CustomCommandSettingsModalContent({
               "hover:tw-bg-interactive-hover hover:tw-text-normal"
             )}
           >
-            <option value="">Inherit from chat model</option>
-            {activeModels.map((option) => (
+            <option value="">
+              {settings.agentBackend === "pi"
+                ? "Inherit from pi chat model"
+                : "Inherit from chat model"}
+            </option>
+            {(settings.agentBackend === "pi" ? activePiModels : activeModels).map((option) => (
               <option key={option.value} value={option.value.toString()}>
                 {option.label}
               </option>

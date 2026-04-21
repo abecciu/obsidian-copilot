@@ -1,7 +1,10 @@
-import { CustomModel, useModelKey } from "@/aiParams";
+import { CustomModel, useModelKey, usePiModelId } from "@/aiParams";
 import { processCommandPrompt } from "@/commands/customCommandUtils";
 import { MenuCommandModal, type ContentState } from "@/components/command-ui";
-import { MODAL_MIN_HEIGHT_COMPACT, MODAL_MIN_HEIGHT_EXPANDED } from "@/components/command-ui/constants";
+import {
+  MODAL_MIN_HEIGHT_COMPACT,
+  MODAL_MIN_HEIGHT_EXPANDED,
+} from "@/components/command-ui/constants";
 import { SelectionHighlight } from "@/editor/selectionHighlight";
 import { createHighlightReplaceGuard, type ReplaceGuard } from "@/editor/replaceGuard";
 import { logError, logWarn } from "@/logger";
@@ -164,6 +167,7 @@ function CustomCommandChatModalContent({
 
   // Model selection
   const [globalModelKey] = useModelKey();
+  const [globalPiModelId] = usePiModelId();
   const settings = useSettingsValue();
   const modelSelectionScope = behavior.modelSelectionScope ?? "custom-command";
 
@@ -171,6 +175,13 @@ function CustomCommandChatModalContent({
   // - quick-command: Use quickCommandModelKey (shared with Quick Ask)
   // - custom-command: Use command's modelKey if set, otherwise global model
   const initialModelKey = useMemo(() => {
+    if (settings.agentBackend === "pi") {
+      if (modelSelectionScope === "quick-command") {
+        return settings.quickCommandPiModelId ?? globalPiModelId;
+      }
+      return command.piModelId || globalPiModelId;
+    }
+
     if (modelSelectionScope === "quick-command") {
       // Use ?? to match QuickAskPanel behavior (empty string is valid, only null/undefined falls back)
       return settings.quickCommandModelKey ?? globalModelKey;
@@ -178,7 +189,16 @@ function CustomCommandChatModalContent({
     // For custom-command scope, respect command-level config
     // Use || here because empty string means "inherit from global"
     return command.modelKey || globalModelKey;
-  }, [modelSelectionScope, settings.quickCommandModelKey, command.modelKey, globalModelKey]);
+  }, [
+    command.modelKey,
+    command.piModelId,
+    globalModelKey,
+    globalPiModelId,
+    modelSelectionScope,
+    settings.agentBackend,
+    settings.quickCommandModelKey,
+    settings.quickCommandPiModelId,
+  ]);
 
   const [selectedModelKey, setSelectedModelKey] = useState(initialModelKey);
 
@@ -188,11 +208,15 @@ function CustomCommandChatModalContent({
       setSelectedModelKey(newModelKey);
       // Only persist for quick-command scope (shared with Quick Ask)
       if (modelSelectionScope === "quick-command") {
-        updateSetting("quickCommandModelKey", newModelKey);
+        if (settings.agentBackend === "pi") {
+          updateSetting("quickCommandPiModelId", newModelKey);
+        } else {
+          updateSetting("quickCommandModelKey", newModelKey);
+        }
       }
       // For custom-command scope, changes only affect current session
     },
-    [modelSelectionScope]
+    [modelSelectionScope, settings.agentBackend]
   );
 
   // Include note context state (for Quick Command mode)
@@ -211,6 +235,10 @@ function CustomCommandChatModalContent({
 
   // Safely resolve the selected model with fallback to first enabled model
   const resolvedModel = useMemo((): CustomModel | null => {
+    if (settings.agentBackend === "pi") {
+      return null;
+    }
+
     try {
       const model = findCustomModel(selectedModelKey, settings.activeModels);
       // Treat disabled models as invalid selections (ModelSelector won't present them)
@@ -223,7 +251,7 @@ function CustomCommandChatModalContent({
       // Avoid side effects during render; notify/log in the effect below.
       return settings.activeModels.find((m) => m.enabled) ?? null;
     }
-  }, [selectedModelKey, settings.activeModels]);
+  }, [selectedModelKey, settings.activeModels, settings.agentBackend]);
 
   // Compute the key for the resolved model
   const resolvedModelKey = useMemo(() => {
@@ -258,10 +286,15 @@ function CustomCommandChatModalContent({
     getLatestStreamingText,
   } = useStreamingChatSession({
     model: resolvedModel,
+    piModelId: settings.agentBackend === "pi" ? selectedModelKey : undefined,
     systemPrompt: systemPrompt || "",
     excludeThinking: true,
     onNoModel: () => {
-      new Notice("No active model is configured. Please configure a model in Copilot settings.");
+      new Notice(
+        settings.agentBackend === "pi"
+          ? "No active pi model is configured. Configure a pi model in Copilot settings."
+          : "No active model is configured. Please configure a model in Copilot settings."
+      );
       setIsLoading(false);
     },
     onNonAbortError: (error) => {
@@ -520,7 +553,11 @@ export class CustomCommandChatModal {
    * - Space checks use scrollRect (editor visible area), not window.
    * - Horizontal clamp to scrollRect first, then viewport as safety net.
    */
-  private getInitialPosition(activeView: MarkdownView | null): { x: number; y: number; anchorBottom?: number } {
+  private getInitialPosition(activeView: MarkdownView | null): {
+    x: number;
+    y: number;
+    anchorBottom?: number;
+  } {
     const win = this.resolveWindow(activeView);
     const panelWidth = Math.min(500, win.innerWidth * 0.9);
     // Reason: The actual initial panel height depends on whether ContentArea is shown.
@@ -528,7 +565,9 @@ export class CustomCommandChatModal {
     // Custom Commands always show ContentArea (expanded).
     // Using the correct height prevents gaps (above) or overlaps (below).
     const hideContentAreaOnIdle = this.configs.behaviorConfig?.hideContentAreaOnIdle ?? false;
-    const panelHeight = hideContentAreaOnIdle ? MODAL_MIN_HEIGHT_COMPACT : MODAL_MIN_HEIGHT_EXPANDED;
+    const panelHeight = hideContentAreaOnIdle
+      ? MODAL_MIN_HEIGHT_COMPACT
+      : MODAL_MIN_HEIGHT_EXPANDED;
     const margin = 12;
     const gap = 6;
 
@@ -583,8 +622,11 @@ export class CustomCommandChatModal {
       (topCoords?.bottom ?? 0) - (topCoords?.top ?? 0),
       (bottomCoords?.bottom ?? 0) - (bottomCoords?.top ?? 0)
     );
-    const isVisualMultiLine = !isCursor && topCoords && bottomCoords
-      && Math.abs(topCoords.top - bottomCoords.top) > Math.max(caretHeight / 2, 2);
+    const isVisualMultiLine =
+      !isCursor &&
+      topCoords &&
+      bottomCoords &&
+      Math.abs(topCoords.top - bottomCoords.top) > Math.max(caretHeight / 2, 2);
 
     // --- Vertical positioning (decides placement first) ---
     // Reason: Extracted to a pure helper (computeVerticalPlacement) so the

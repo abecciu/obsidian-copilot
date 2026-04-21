@@ -1,7 +1,5 @@
 import { CustomModel } from "@/aiParams";
-import { SettingItem } from "@/components/ui/setting-item";
-import { BUILTIN_CHAT_MODELS, BUILTIN_EMBEDDING_MODELS } from "@/constants";
-import EmbeddingManager from "@/LLMProviders/embeddingManager";
+import { BUILTIN_CHAT_MODELS } from "@/constants";
 import ProjectManager from "@/LLMProviders/projectManager";
 import { logError } from "@/logger";
 import { CopilotSettings, setSettings, updateSetting, useSettingsValue } from "@/settings/model";
@@ -15,7 +13,6 @@ import React, { useState } from "react";
 export const ModelSettings: React.FC = () => {
   const settings = useSettingsValue();
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [showAddEmbeddingDialog, setShowAddEmbeddingDialog] = useState(false);
 
   const onCopyModel = (model: CustomModel, isEmbeddingModel: boolean = false) => {
     const newModel: CustomModel = {
@@ -95,22 +92,6 @@ export const ModelSettings: React.FC = () => {
     );
     updateSetting("activeModels", updatedModels);
   };
-
-  const onDeleteEmbeddingModel = (modelKey: string) => {
-    const [modelName, provider] = modelKey.split("|");
-    const updatedModels = settings.activeEmbeddingModels.filter(
-      (model) => !(model.name === modelName && model.provider === provider)
-    );
-    updateSetting("activeEmbeddingModels", updatedModels);
-  };
-
-  const handleEmbeddingModelUpdate = (updatedModel: CustomModel) => {
-    const updatedModels = settings.activeEmbeddingModels.map((m) =>
-      m.name === updatedModel.name && m.provider === updatedModel.provider ? updatedModel : m
-    );
-    updateSetting("activeEmbeddingModels", updatedModels);
-  };
-
   const handleRefreshChatModels = () => {
     // Get all custom models (non-built-in models)
     const customModels = settings.activeModels.filter((model) => !model.isBuiltIn);
@@ -121,18 +102,6 @@ export const ModelSettings: React.FC = () => {
     // Update the settings
     updateSetting("activeModels", updatedModels);
     new Notice("Chat models refreshed successfully");
-  };
-
-  const handleRefreshEmbeddingModels = () => {
-    // Get all custom models (non-built-in models)
-    const customModels = settings.activeEmbeddingModels.filter((model) => !model.isBuiltIn);
-
-    // Create a new array with built-in models and custom models
-    const updatedModels = [...BUILTIN_EMBEDDING_MODELS, ...customModels];
-
-    // Update the settings
-    updateSetting("activeEmbeddingModels", updatedModels);
-    new Notice("Embedding models refreshed successfully");
   };
 
   const handleEditModel = (model: CustomModel, isEmbeddingModel: boolean = false) => {
@@ -166,55 +135,6 @@ export const ModelSettings: React.FC = () => {
           ping={(model) =>
             ProjectManager.instance.getCurrentChainManager().chatModelManager.ping(model)
           }
-        />
-
-        <div className="tw-space-y-4">
-          <SettingItem
-            type="slider"
-            title="Conversation turns in context"
-            description="The number of previous conversation turns to include in the context. Default is 15 turns, i.e. 30 messages."
-            value={settings.contextTurns}
-            onChange={(value) => updateSetting("contextTurns", value)}
-            min={1}
-            max={50}
-            step={1}
-          />
-          <SettingItem
-            type="slider"
-            title="Auto-compact threshold"
-            description="Automatically summarize context when it exceeds this token count. Set to maximum to make it less aggressive."
-            min={64000}
-            max={1000000}
-            step={64000}
-            value={settings.autoCompactThreshold}
-            onChange={(value) => updateSetting("autoCompactThreshold", value)}
-          />
-        </div>
-      </section>
-
-      <section>
-        <ModelTable
-          models={settings.activeEmbeddingModels}
-          onEdit={(model) => handleEditModel(model, true)}
-          onDelete={onDeleteEmbeddingModel}
-          onCopy={(model) => onCopyModel(model, true)}
-          onAdd={() => setShowAddEmbeddingDialog(true)}
-          onUpdateModel={handleEmbeddingModelUpdate}
-          onReorderModels={(newModels) => handleModelReorder(newModels, true)}
-          onRefresh={handleRefreshEmbeddingModels}
-          title="Embedding Models"
-        />
-
-        {/* Embedding model add dialog */}
-        <ModelAddDialog
-          open={showAddEmbeddingDialog}
-          onOpenChange={setShowAddEmbeddingDialog}
-          onAdd={(model) => {
-            const updatedModels = [...settings.activeEmbeddingModels, model];
-            updateSetting("activeEmbeddingModels", updatedModels);
-          }}
-          isEmbeddingModel={true}
-          ping={(model) => EmbeddingManager.getInstance().ping(model)}
         />
       </section>
     </div>

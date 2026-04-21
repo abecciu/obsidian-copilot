@@ -17,6 +17,8 @@ interface TokenLimitWarningProps {
  * Shows a clear message and provides a button to open model settings.
  */
 export const TokenLimitWarning: React.FC<TokenLimitWarningProps> = ({ message, app }) => {
+  const isPiMode = getSettings().agentBackend === "pi";
+
   const handleOpenSettings = () => {
     const settings = getSettings();
     const currentModelKey = getModelKey();
@@ -47,22 +49,25 @@ export const TokenLimitWarning: React.FC<TokenLimitWarningProps> = ({ message, a
         <div className="tw-flex-1">
           <div className="tw-mb-2 tw-font-semibold tw-text-warning">Response Truncated</div>
           <div className="tw-mb-3 tw-text-normal">
-            The AI response was cut off because it reached the token limit. You can increase the
-            &apos;Token Limit&apos; in model settings for longer responses.
+            {isPiMode
+              ? "The AI response was cut off because it reached the provider token limit. Adjust the active pi model or the provider-side limit if you need longer responses."
+              : "The AI response was cut off because it reached the token limit. You can increase the 'Token Limit' in model settings for longer responses."}
           </div>
           {message.responseMetadata?.tokenUsage && (
             <div className="tw-mb-3 tw-text-sm tw-text-muted">
               Output tokens used: {message.responseMetadata.tokenUsage.outputTokens || "N/A"}
             </div>
           )}
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleOpenSettings}
-            className="tw-text-warning hover:tw-bg-callout-warning/10"
-          >
-            Open Model Settings
-          </Button>
+          {!isPiMode && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleOpenSettings}
+              className="tw-text-warning hover:tw-bg-callout-warning/10"
+            >
+              Open Model Settings
+            </Button>
+          )}
         </div>
       </div>
     </div>

@@ -892,6 +892,14 @@ export const DEFAULT_SETTINGS: CopilotSettings = {
     baseUrl: "https://api.openai.com/v1",
     apiKey: "",
     modelId: "gpt-4.1-mini",
+    models: [
+      {
+        id: "gpt-4.1-mini",
+        displayName: "gpt-4.1-mini",
+        enabled: true,
+        source: "manual",
+      },
+    ],
     thinkingLevel: "minimal",
     enabledToolIds: [
       "localSearch",
@@ -1013,6 +1021,7 @@ export const DEFAULT_SETTINGS: CopilotSettings = {
   maxRecentConversations: 30,
   enableSavedMemory: true,
   quickCommandModelKey: undefined,
+  quickCommandPiModelId: undefined,
   quickCommandIncludeNoteContext: true,
   autoIncludeTextSelection: false,
   autoAddSelectionToContext: false,

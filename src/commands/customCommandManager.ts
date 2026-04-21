@@ -11,6 +11,7 @@ import {
   COPILOT_COMMAND_CONTEXT_MENU_ORDER,
   COPILOT_COMMAND_LAST_USED,
   COPILOT_COMMAND_MODEL_KEY,
+  COPILOT_COMMAND_PI_MODEL_ID,
   COPILOT_COMMAND_SLASH_ENABLED,
 } from "@/commands/constants";
 import {
@@ -68,6 +69,7 @@ export class CustomCommandManager {
         frontmatter[COPILOT_COMMAND_SLASH_ENABLED] = command.showInSlashMenu;
         frontmatter[COPILOT_COMMAND_CONTEXT_MENU_ORDER] = command.order;
         frontmatter[COPILOT_COMMAND_MODEL_KEY] = command.modelKey;
+        frontmatter[COPILOT_COMMAND_PI_MODEL_ID] = command.piModelId ?? "";
         frontmatter[COPILOT_COMMAND_LAST_USED] = command.lastUsedMs;
       });
 
@@ -128,6 +130,7 @@ export class CustomCommandManager {
           frontmatter[COPILOT_COMMAND_SLASH_ENABLED] = command.showInSlashMenu;
           frontmatter[COPILOT_COMMAND_CONTEXT_MENU_ORDER] = command.order;
           frontmatter[COPILOT_COMMAND_MODEL_KEY] = command.modelKey;
+          frontmatter[COPILOT_COMMAND_PI_MODEL_ID] = command.piModelId ?? "";
           frontmatter[COPILOT_COMMAND_LAST_USED] = command.lastUsedMs;
         });
       }

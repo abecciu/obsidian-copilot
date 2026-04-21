@@ -10,6 +10,7 @@ import { SettingSlider } from "@/components/ui/setting-slider";
 import { Textarea } from "@/components/ui/textarea";
 import { DEFAULT_MODEL_SETTING } from "@/constants";
 import { SystemPromptSyntaxInstruction } from "@/components/SystemPromptSyntaxInstruction";
+import { getEnabledPiModels } from "@/pi/PiModelCatalog";
 import { getDecodedPatterns } from "@/search/searchUtils";
 import { getModelKeyFromModel, useSettingsValue } from "@/settings/model";
 import { checkModelApiKey, err2String, randomUUID } from "@/utils";
@@ -26,6 +27,7 @@ interface AddProjectModalContentProps {
 
 function AddProjectModalContent({ initialProject, onSave, onCancel }: AddProjectModalContentProps) {
   const settings = useSettingsValue();
+  const isPiMode = settings.agentBackend === "pi";
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [touched, setTouched] = useState({
     name: false,
@@ -41,6 +43,7 @@ function AddProjectModalContent({ initialProject, onSave, onCancel }: AddProject
       description: "",
       systemPrompt: "",
       projectModelKey: "",
+      projectPiModelId: "",
       modelConfigs: {
         temperature: DEFAULT_MODEL_SETTING.TEMPERATURE,
         maxTokens: DEFAULT_MODEL_SETTING.MAX_TOKENS,
@@ -85,7 +88,7 @@ function AddProjectModalContent({ initialProject, onSave, onCancel }: AddProject
   };
 
   const isFormValid = () => {
-    return formData.name && formData.projectModelKey;
+    return formData.name && (isPiMode ? formData.projectPiModelId : formData.projectModelKey);
   };
 
   const handleInputChange = (
@@ -96,7 +99,7 @@ function AddProjectModalContent({ initialProject, onSave, onCancel }: AddProject
       // Handle text input
       if (typeof value === "string") {
         // Only trim for model key which shouldn't have whitespace
-        if (field === "projectModelKey") {
+        if (field === "projectModelKey" || field === "projectPiModelId") {
           value = value.trim();
         }
       }
@@ -133,7 +136,7 @@ function AddProjectModalContent({ initialProject, onSave, onCancel }: AddProject
       formData.name = formData.name.trim();
     }
 
-    const requiredFields = ["name", "projectModelKey"];
+    const requiredFields = ["name", isPiMode ? "projectPiModelId" : "projectModelKey"];
     const missingFields = requiredFields.filter((field) => !formData[field as keyof ProjectConfig]);
 
     if (missingFields.length > 0) {
@@ -210,13 +213,21 @@ function AddProjectModalContent({ initialProject, onSave, onCancel }: AddProject
         <FormField
           label="Default Model"
           required
-          error={touched.projectModelKey && !formData.projectModelKey}
+          error={
+            touched.projectModelKey &&
+            !(isPiMode ? formData.projectPiModelId : formData.projectModelKey)
+          }
           errorMessage="Default model is required"
         >
           <ObsidianNativeSelect
-            value={formData.projectModelKey}
+            value={isPiMode ? formData.projectPiModelId || "" : formData.projectModelKey}
             onChange={(e) => {
               const value = e.target.value;
+              if (isPiMode) {
+                handleInputChange("projectPiModelId", value);
+                return;
+              }
+
               const selectedModel = settings.activeModels.find(
                 (m) => m.enabled && getModelKeyFromModel(m) === value
               );
@@ -230,12 +241,19 @@ function AddProjectModalContent({ initialProject, onSave, onCancel }: AddProject
             }}
             onBlur={() => setTouched((prev) => ({ ...prev, projectModelKey: true }))}
             placeholder="Select a model"
-            options={settings.activeModels
-              .filter((m) => m.enabled && m.projectEnabled)
-              .map((model) => ({
-                label: getModelDisplayWithIcons(model),
-                value: getModelKeyFromModel(model),
-              }))}
+            options={
+              isPiMode
+                ? getEnabledPiModels(settings).map((model) => ({
+                    label: model.displayName,
+                    value: model.id,
+                  }))
+                : settings.activeModels
+                    .filter((m) => m.enabled && m.projectEnabled)
+                    .map((model) => ({
+                      label: getModelDisplayWithIcons(model),
+                      value: getModelKeyFromModel(model),
+                    }))
+            }
           />
         </FormField>
 

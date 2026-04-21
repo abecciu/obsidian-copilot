@@ -30,6 +30,11 @@ export interface CustomCommand {
   modelKey: string;
 
   /**
+   * Pi model ID to use for the custom command when the pi backend is active
+   */
+  piModelId?: string;
+
+  /**
    * Timestamp of the last time the custom command was used
    */
   lastUsedMs: number;

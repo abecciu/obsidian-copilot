@@ -21,6 +21,20 @@ const modelKeyAtom = atom(
   }
 );
 
+const userPiModelIdAtom = atom<string | null>(null);
+const piModelIdAtom = atom(
+  (get) => {
+    const userValue = get(userPiModelIdAtom);
+    if (userValue !== null) {
+      return userValue;
+    }
+    return get(settingsAtom).piAgent.modelId;
+  },
+  (get, set, newValue) => {
+    set(userPiModelIdAtom, newValue);
+  }
+);
+
 const userChainTypeAtom = atom<ChainType | null>(null);
 const chainTypeAtom = atom(
   (get) => {
@@ -87,6 +101,7 @@ export interface ProjectConfig {
   description?: string;
   systemPrompt: string;
   projectModelKey: string;
+  projectPiModelId?: string;
   modelConfigs: {
     temperature?: number;
     maxTokens?: number;
@@ -190,6 +205,24 @@ export function setModelKey(modelKey: string) {
 
 export function getModelKey(): string {
   return settingsStore.get(modelKeyAtom);
+}
+
+export function setPiModelId(modelId: string) {
+  settingsStore.set(piModelIdAtom, modelId);
+}
+
+export function getPiModelId(): string {
+  return settingsStore.get(piModelIdAtom);
+}
+
+export function subscribeToPiModelIdChange(callback: () => void): () => void {
+  return settingsStore.sub(piModelIdAtom, callback);
+}
+
+export function usePiModelId() {
+  return useAtom(piModelIdAtom, {
+    store: settingsStore,
+  });
 }
 
 export function subscribeToModelKeyChange(callback: () => void): () => void {

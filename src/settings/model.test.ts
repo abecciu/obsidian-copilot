@@ -244,8 +244,46 @@ describe("sanitizeSettings - pi backend settings", () => {
 
     expect(sanitized.piAgent).toEqual({
       ...DEFAULT_SETTINGS.piAgent,
+      models: [
+        {
+          id: DEFAULT_SETTINGS.piAgent.modelId,
+          displayName: DEFAULT_SETTINGS.piAgent.modelId,
+          enabled: true,
+          source: "manual",
+        },
+      ],
       enabledToolIds: ["localSearch", "webSearch"],
     });
+  });
+
+  it("sanitizes malformed pi model catalog and quick command pi model values", () => {
+    const sanitized = sanitizeSettings({
+      ...DEFAULT_SETTINGS,
+      quickCommandPiModelId: 42 as any,
+      piAgent: {
+        ...DEFAULT_SETTINGS.piAgent,
+        modelId: "gateway-model",
+        models: [
+          {
+            id: " gateway-model ",
+            displayName: " Gateway Model ",
+            enabled: "yes",
+            source: "unknown",
+          },
+          { id: "", displayName: "Broken", enabled: true, source: "manual" },
+        ] as any,
+      },
+    });
+
+    expect(sanitized.quickCommandPiModelId).toBeUndefined();
+    expect(sanitized.piAgent.models).toEqual([
+      {
+        id: "gateway-model",
+        displayName: "Gateway Model",
+        enabled: true,
+        source: "fetched",
+      },
+    ]);
   });
 });
 

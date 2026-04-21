@@ -10,6 +10,7 @@ export const EMPTY_COMMAND: CustomCommand = {
   showInSlashMenu: true,
   order: 0,
   modelKey: "",
+  piModelId: "",
   lastUsedMs: 0,
 };
 
@@ -18,6 +19,7 @@ export const COPILOT_COMMAND_CONTEXT_MENU_ENABLED = "copilot-command-context-men
 export const COPILOT_COMMAND_SLASH_ENABLED = "copilot-command-slash-enabled";
 export const COPILOT_COMMAND_CONTEXT_MENU_ORDER = "copilot-command-context-menu-order";
 export const COPILOT_COMMAND_MODEL_KEY = "copilot-command-model-key";
+export const COPILOT_COMMAND_PI_MODEL_ID = "copilot-command-pi-model-id";
 export const COPILOT_COMMAND_LAST_USED = "copilot-command-last-used";
 export const DEFAULT_COMMANDS: CustomCommand[] = [
   {

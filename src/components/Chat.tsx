@@ -9,6 +9,7 @@ import {
   updateIndexingProgressState,
   useIndexingProgress,
   useModelKey,
+  usePiModelId,
   useSelectedTextContexts,
 } from "@/aiParams";
 import { resetSessionSystemPromptSettings } from "@/system-prompts";
@@ -82,6 +83,7 @@ const ChatInternal: React.FC<ChatProps & { chatInput: ReturnType<typeof useChatI
 
   const { messages: chatHistory, addMessage: rawAddMessage } = useChatManager(chatUIState);
   const [currentModelKey] = useModelKey();
+  const [currentPiModelId] = usePiModelId();
   const [currentChain] = useChainType();
   const [currentAiMessage, setCurrentAiMessage] = useState("");
   const [inputMessage, setInputMessage] = useState("");
@@ -385,12 +387,25 @@ const ChatInternal: React.FC<ChatProps & { chatInput: ReturnType<typeof useChatI
 
     try {
       // Use the new ChatManager persistence functionality
-      await chatUIState.saveChat(currentModelKey);
+      const activeProject = currentChain === ChainType.PROJECT_CHAIN ? getCurrentProject() : null;
+      const savedModelId =
+        settings.agentBackend === "pi"
+          ? activeProject?.projectPiModelId || currentPiModelId || settings.piAgent.modelId
+          : currentModelKey;
+      await chatUIState.saveChat(savedModelId);
     } catch (error) {
       logError("Error saving chat as note:", err2String(error));
       new Notice("Failed to save chat as note. Check console for details.");
     }
-  }, [app, chatUIState, currentModelKey]);
+  }, [
+    app,
+    chatUIState,
+    currentChain,
+    currentModelKey,
+    currentPiModelId,
+    settings.agentBackend,
+    settings.piAgent.modelId,
+  ]);
 
   const handleStopGenerating = useCallback(
     (reason?: ABORT_REASON) => {

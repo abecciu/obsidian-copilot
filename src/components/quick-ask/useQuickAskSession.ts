@@ -59,6 +59,10 @@ export function useQuickAskSession(params: UseQuickAskSessionParams): QuickAskSe
 
   // Safely resolve the selected model with fallback to first enabled model
   const resolvedModel = useMemo(() => {
+    if (settings.agentBackend === "pi") {
+      return null;
+    }
+
     try {
       const model = findCustomModel(selectedModelKey, settings.activeModels);
       if (!model.enabled) {
@@ -72,7 +76,7 @@ export function useQuickAskSession(params: UseQuickAskSessionParams): QuickAskSe
       logWarn("Selected model not found; falling back to first enabled model.");
       return settings.activeModels.find((m) => m.enabled) ?? null;
     }
-  }, [selectedModelKey, settings.activeModels]);
+  }, [selectedModelKey, settings.activeModels, settings.agentBackend]);
 
   // Use shared streaming hook
   const {
@@ -83,11 +87,16 @@ export function useQuickAskSession(params: UseQuickAskSessionParams): QuickAskSe
     reset,
   } = useStreamingChatSession({
     model: resolvedModel,
+    piModelId: settings.agentBackend === "pi" ? selectedModelKey : undefined,
     systemPrompt: QUICK_COMMAND_SYSTEM_PROMPT,
     excludeThinking: true,
     onNoModel: () => {
-      logError("No active model is configured. Please configure a model in Copilot settings.");
-      new Notice("No active model configured. Please configure a model in Copilot settings.");
+      const message =
+        settings.agentBackend === "pi"
+          ? "No active pi model is configured. Configure a pi model in Copilot settings."
+          : "No active model configured. Please configure a model in Copilot settings.";
+      logError(message);
+      new Notice(message);
     },
     onNonAbortError: (error) => {
       logError("Error generating response:", error);

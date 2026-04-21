@@ -3,6 +3,7 @@ import {
   COPILOT_COMMAND_CONTEXT_MENU_ORDER,
   COPILOT_COMMAND_LAST_USED,
   COPILOT_COMMAND_MODEL_KEY,
+  COPILOT_COMMAND_PI_MODEL_ID,
   COPILOT_COMMAND_SLASH_ENABLED,
   EMPTY_COMMAND,
   LEGACY_SELECTED_TEXT_PLACEHOLDER,
@@ -118,10 +119,12 @@ export async function parseCustomCommandFile(file: TFile): Promise<CustomCommand
   const lastUsedMs = metadata?.frontmatter?.[COPILOT_COMMAND_LAST_USED] ?? EMPTY_COMMAND.lastUsedMs;
   const order = metadata?.frontmatter?.[COPILOT_COMMAND_CONTEXT_MENU_ORDER] ?? EMPTY_COMMAND.order;
   const modelKey = metadata?.frontmatter?.[COPILOT_COMMAND_MODEL_KEY] ?? EMPTY_COMMAND.modelKey;
+  const piModelId = metadata?.frontmatter?.[COPILOT_COMMAND_PI_MODEL_ID] ?? EMPTY_COMMAND.piModelId;
 
   return {
     title: file.basename,
     modelKey,
+    piModelId,
     content,
     showInContextMenu,
     showInSlashMenu,

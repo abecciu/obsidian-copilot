@@ -155,6 +155,7 @@ export function registerCommands(
       showInSlashMenu: false,
       order: 0,
       modelKey: "", // Empty = inherit from quickCommandModelKey
+      piModelId: "", // Empty = inherit from quickCommandPiModelId
       lastUsedMs: Date.now(),
     };
 

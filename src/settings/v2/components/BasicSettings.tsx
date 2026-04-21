@@ -9,6 +9,7 @@ import { DEFAULT_OPEN_AREA, PLUS_UTM_MEDIUMS, SEND_SHORTCUT } from "@/constants"
 import { useTab } from "@/contexts/TabContext";
 import { cn } from "@/lib/utils";
 import { createPlusPageUrl } from "@/plusUtils";
+import { getEnabledPiModels } from "@/pi/PiModelCatalog";
 import { getModelKeyFromModel, updateSetting, useSettingsValue } from "@/settings/model";
 import { PlusSettings } from "@/settings/v2/components/PlusSettings";
 import { checkModelApiKey, formatDateTime } from "@/utils";
@@ -89,6 +90,10 @@ export const BasicSettings: React.FC = () => {
       label: getModelDisplayWithIcons(model),
       value: getModelKeyFromModel(model),
     }));
+  const enabledPiModels = getEnabledPiModels(settings).map((model) => ({
+    label: model.displayName,
+    value: model.id,
+  }));
 
   return (
     <div className="tw-space-y-4">
@@ -156,20 +161,6 @@ export const BasicSettings: React.FC = () => {
                     })
                   }
                   placeholder="https://api.openai.com/v1"
-                />
-
-                <SettingItem
-                  type="text"
-                  title="Pi Model ID"
-                  description="Model identifier sent to your configured pi backend."
-                  value={settings.piAgent.modelId}
-                  onChange={(value) =>
-                    updateSetting("piAgent", {
-                      ...settings.piAgent,
-                      modelId: value,
-                    })
-                  }
-                  placeholder="gpt-4.1-mini"
                 />
 
                 <SettingItem
@@ -254,24 +245,56 @@ export const BasicSettings: React.FC = () => {
             title="Default Chat Model"
             description={
               <div className="tw-flex tw-items-center tw-gap-1.5">
-                <span className="tw-leading-none">Select the Chat model to use</span>
+                <span className="tw-leading-none">
+                  {settings.agentBackend === "pi"
+                    ? "Select the default pi model to use"
+                    : "Select the Chat model to use"}
+                </span>
                 <HelpTooltip
                   content={
                     <div className="tw-flex tw-max-w-96 tw-flex-col tw-gap-2 tw-py-4">
-                      <div className="tw-text-sm tw-font-medium tw-text-accent">
-                        Default model is OpenRouter Gemini 2.5 Flash
-                      </div>
-                      <div className="tw-text-xs tw-text-muted">
-                        Set your OpenRouter API key in &apos;API keys&apos; to use this model, or
-                        select a different model from another provider.
-                      </div>
+                      {settings.agentBackend === "pi" ? (
+                        <>
+                          <div className="tw-text-sm tw-font-medium tw-text-accent">
+                            Pi mode uses the local pi catalog
+                          </div>
+                          <div className="tw-text-xs tw-text-muted">
+                            Refresh and curate pi models in the Pi Models tab. This default controls
+                            the main chat fallback when no project-specific pi model is selected.
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="tw-text-sm tw-font-medium tw-text-accent">
+                            Default model is OpenRouter Gemini 2.5 Flash
+                          </div>
+                          <div className="tw-text-xs tw-text-muted">
+                            Set your OpenRouter API key in &apos;API keys&apos; to use this model,
+                            or select a different model from another provider.
+                          </div>
+                        </>
+                      )}
                     </div>
                   }
                 />
               </div>
             }
-            value={defaultModelActivated ? settings.defaultModelKey : "Select Model"}
+            value={
+              settings.agentBackend === "pi"
+                ? settings.piAgent.modelId
+                : defaultModelActivated
+                  ? settings.defaultModelKey
+                  : "Select Model"
+            }
             onChange={(value) => {
+              if (settings.agentBackend === "pi") {
+                updateSetting("piAgent", {
+                  ...settings.piAgent,
+                  modelId: value,
+                });
+                return;
+              }
+
               const selectedModel = settings.activeModels.find(
                 (m) => m.enabled && getModelKeyFromModel(m) === value
               );
@@ -284,11 +307,35 @@ export const BasicSettings: React.FC = () => {
               updateSetting("defaultModelKey", value);
             }}
             options={
-              defaultModelActivated
-                ? enableActivatedModels
-                : [{ label: "Select Model", value: "Select Model" }, ...enableActivatedModels]
+              settings.agentBackend === "pi"
+                ? enabledPiModels
+                : defaultModelActivated
+                  ? enableActivatedModels
+                  : [{ label: "Select Model", value: "Select Model" }, ...enableActivatedModels]
             }
             placeholder="Model"
+          />
+
+          <SettingItem
+            type="slider"
+            title="Conversation turns in context"
+            description="The number of previous conversation turns to include in context. Default is 15 turns, i.e. 30 messages."
+            value={settings.contextTurns}
+            onChange={(value) => updateSetting("contextTurns", value)}
+            min={1}
+            max={50}
+            step={1}
+          />
+
+          <SettingItem
+            type="slider"
+            title="Auto-compact threshold"
+            description="Automatically summarize context when it exceeds this token count. Set it higher to make compaction less aggressive."
+            min={64000}
+            max={1000000}
+            step={64000}
+            value={settings.autoCompactThreshold}
+            onChange={(value) => updateSetting("autoCompactThreshold", value)}
           />
 
           {/* Basic Configuration Group */}

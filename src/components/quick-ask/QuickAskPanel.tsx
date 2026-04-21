@@ -9,7 +9,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { Notice } from "obsidian";
 import { Send, Square, X, MessageSquareX } from "lucide-react";
-import { useModelKey } from "@/aiParams";
+import { useModelKey, usePiModelId } from "@/aiParams";
 import { useDraggable } from "@/hooks/use-draggable";
 import type { ResizeDirection } from "@/hooks/use-resizable";
 import { useSettingsValue, updateSetting } from "@/settings/model";
@@ -60,7 +60,11 @@ export function QuickAskPanel({
   // Settings
   const settings = useSettingsValue();
   const [globalModelKey] = useModelKey();
-  const selectedModelKey = settings.quickCommandModelKey ?? globalModelKey;
+  const [globalPiModelId] = usePiModelId();
+  const selectedModelKey =
+    settings.agentBackend === "pi"
+      ? (settings.quickCommandPiModelId ?? globalPiModelId)
+      : (settings.quickCommandModelKey ?? globalModelKey);
   // Use local state for includeNoteContext to ensure immediate UI updates
   const [includeNoteContext, setIncludeNoteContext] = useState(
     () => settings.quickCommandIncludeNoteContext
@@ -256,9 +260,16 @@ export function QuickAskPanel({
     [messages, replaceGuard, onClose]
   );
 
-  const handleModelChange = useCallback((modelKey: string) => {
-    updateSetting("quickCommandModelKey", modelKey);
-  }, []);
+  const handleModelChange = useCallback(
+    (modelKey: string) => {
+      if (settings.agentBackend === "pi") {
+        updateSetting("quickCommandPiModelId", modelKey);
+        return;
+      }
+      updateSetting("quickCommandModelKey", modelKey);
+    },
+    [settings.agentBackend]
+  );
 
   const handleIncludeNoteContextChange = useCallback((checked: boolean) => {
     setIncludeNoteContext(checked);

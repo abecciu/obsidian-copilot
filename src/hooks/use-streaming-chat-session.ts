@@ -13,6 +13,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RunnableSequence } from "@langchain/core/runnables";
 import type { BaseChatMemory } from "@langchain/classic/memory";
+import { Agent, type AgentEvent } from "@mariozechner/pi-agent-core";
+import type { Message } from "@mariozechner/pi-ai";
 
 import type { CustomModel } from "@/aiParams";
 import { createChatChain, createChatMemory } from "@/commands/customCommandChatEngine";
@@ -20,6 +22,8 @@ import { compactAssistantOutput } from "@/context/ChatHistoryCompactor";
 import { ThinkBlockStreamer } from "@/LLMProviders/chainRunner/utils/ThinkBlockStreamer";
 import { ABORT_REASON } from "@/constants";
 import { logError } from "@/logger";
+import { resolvePiApiKey, resolvePiModel } from "@/pi/PiModelResolver";
+import { useSettingsValue } from "@/settings/model";
 import { useRafThrottledCallback } from "@/hooks/use-raf-throttled-callback";
 
 export interface StreamingChatTurnContext {
@@ -32,6 +36,8 @@ export interface StreamingChatTurnContext {
 export interface UseStreamingChatSessionParams {
   /** Resolved model to use (already validated/enabled). */
   model: CustomModel | null;
+  /** Pi model ID to use when the pi backend is active. */
+  piModelId?: string | null;
   /** System prompt for the chain (empty string allowed). */
   systemPrompt: string;
   /** Exclude thinking blocks from streamed output (default: true). */
@@ -98,12 +104,34 @@ function shouldSkipPersistOnAbort(signal: AbortSignal): boolean {
 }
 
 /**
+ * Extract plain text from a pi assistant message.
+ */
+function extractPiAssistantText(message: { content?: any[]; errorMessage?: string }): string {
+  const content = Array.isArray(message.content) ? message.content : [];
+  const text = content
+    .filter((item) => item?.type === "text")
+    .map((item) => item?.text || "")
+    .join("");
+
+  return text || message.errorMessage || "";
+}
+
+/**
  * Shared streaming chat session hook for Quick Ask + CustomCommandChatModal.
  */
 export function useStreamingChatSession(
   params: UseStreamingChatSessionParams
 ): StreamingChatSessionApi {
-  const { model, systemPrompt, excludeThinking = true, onNoModel, onNonAbortError } = params;
+  const {
+    model,
+    piModelId,
+    systemPrompt,
+    excludeThinking = true,
+    onNoModel,
+    onNonAbortError,
+  } = params;
+  const settings = useSettingsValue();
+  const isPiMode = settings.agentBackend === "pi";
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState("");
@@ -130,6 +158,7 @@ export function useStreamingChatSession(
 
   const memoryRef = useRef<BaseChatMemory | null>(null);
   const chainRef = useRef<RunnableSequence | null>(null);
+  const piMessagesRef = useRef<Message[]>([]);
   const currentModelKeyRef = useRef<string | null>(null);
   const currentSystemPromptRef = useRef<string | null>(null);
 
@@ -208,15 +237,21 @@ export function useStreamingChatSession(
     chainRef.current = null;
     currentModelKeyRef.current = null;
     currentSystemPromptRef.current = null;
-  }, [modelKey, systemPrompt]);
+  }, [isPiMode, modelKey, piModelId, systemPrompt]);
 
   const getIsFirstTurn = useCallback((): boolean => {
+    if (isPiMode) {
+      return piMessagesRef.current.length === 0;
+    }
     return !hasSavedContextOnceRef.current;
-  }, []);
+  }, [isPiMode]);
 
   const getMemory = useCallback((): BaseChatMemory | null => {
+    if (isPiMode) {
+      return null;
+    }
     return memoryRef.current;
-  }, []);
+  }, [isPiMode]);
 
   /** Returns the latest streaming text directly from the ref, bypassing RAF throttle. */
   const getLatestStreamingText = useCallback((): string => {
@@ -234,6 +269,7 @@ export function useStreamingChatSession(
     chainRef.current = null;
     currentModelKeyRef.current = null;
     currentSystemPromptRef.current = null;
+    piMessagesRef.current = [];
 
     memoryRef.current = createChatMemory();
     hasSavedContextOnceRef.current = false;
@@ -288,30 +324,79 @@ export function useStreamingChatSession(
 
       try {
         const isFirstTurn = !hasSavedContextOnceRef.current;
+        const resolvedIsFirstTurn = isPiMode ? piMessagesRef.current.length === 0 : isFirstTurn;
 
-        if (!model) {
+        if (!isPiMode && !model) {
           onNoModelRef.current?.();
           return null;
         }
 
-        prompt = await getPrompt({ signal: abortController.signal, isFirstTurn });
+        if (isPiMode && !(piModelId || settings.piAgent.modelId || "").trim()) {
+          onNoModelRef.current?.();
+          return null;
+        }
+
+        prompt = await getPrompt({
+          signal: abortController.signal,
+          isFirstTurn: resolvedIsFirstTurn,
+        });
         if (abortController.signal.aborted) return null;
 
         if (!prompt.trim()) return null;
 
-        const chainAndMemory = await getOrCreateChain(abortController.signal);
-        if (!chainAndMemory) return null;
+        if (isPiMode) {
+          const resolvedPiModelId = (piModelId || settings.piAgent.modelId || "").trim();
+          const resolvedModel = resolvePiModel(resolvedPiModelId);
+          const apiKey = await resolvePiApiKey();
+          const agent = new Agent({
+            initialState: {
+              model: resolvedModel,
+              systemPrompt,
+              thinkingLevel: settings.piAgent.thinkingLevel,
+              tools: [],
+              messages: piMessagesRef.current.slice(),
+            },
+            getApiKey: async () => apiKey,
+          });
 
-        memory = chainAndMemory.memory;
+          const unsubscribe = agent.subscribe(async (event: AgentEvent) => {
+            if (event.type === "message_update" && event.message.role === "assistant") {
+              handleDelta(extractPiAssistantText(event.message));
+              return;
+            }
 
-        const chainWithSignal = chainAndMemory.chain.withConfig({
-          signal: abortController.signal,
-        });
-        const stream = await chainWithSignal.stream({ input: prompt });
+            if (event.type === "message_end" && event.message.role === "assistant") {
+              handleDelta(extractPiAssistantText(event.message));
+            }
+          });
+          const abortHandler = () => agent.abort();
+          abortController.signal.addEventListener("abort", abortHandler);
 
-        for await (const chunk of stream) {
-          thinkStreamer.processChunk(chunk);
-          if (abortController.signal.aborted) break;
+          try {
+            await agent.prompt(prompt);
+          } finally {
+            unsubscribe();
+            abortController.signal.removeEventListener("abort", abortHandler);
+          }
+
+          if (!shouldSkipPersistOnAbort(abortController.signal)) {
+            piMessagesRef.current = agent.state.messages.slice() as Message[];
+          }
+        } else {
+          const chainAndMemory = await getOrCreateChain(abortController.signal);
+          if (!chainAndMemory) return null;
+
+          memory = chainAndMemory.memory;
+
+          const chainWithSignal = chainAndMemory.chain.withConfig({
+            signal: abortController.signal,
+          });
+          const stream = await chainWithSignal.stream({ input: prompt });
+
+          for await (const chunk of stream) {
+            thinkStreamer.processChunk(chunk);
+            if (abortController.signal.aborted) break;
+          }
         }
       } catch (error) {
         const isAbort =
@@ -371,7 +456,18 @@ export function useStreamingChatSession(
 
       return committed;
     },
-    [excludeThinking, getOrCreateChain, handleDelta, model, setStreamingTextThrottled]
+    [
+      excludeThinking,
+      getOrCreateChain,
+      handleDelta,
+      isPiMode,
+      model,
+      piModelId,
+      setStreamingTextThrottled,
+      settings.piAgent.modelId,
+      settings.piAgent.thinkingLevel,
+      systemPrompt,
+    ]
   );
 
   return {

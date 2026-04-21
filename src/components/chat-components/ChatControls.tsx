@@ -324,7 +324,9 @@ export function ChatControls({
           </TooltipTrigger>
           <TooltipContent>New Chat</TooltipContent>
         </Tooltip>
-        {selectedChain !== ChainType.PROJECT_CHAIN && <ChatSettingsPopover />}
+        {selectedChain !== ChainType.PROJECT_CHAIN && settings.agentBackend !== "pi" && (
+          <ChatSettingsPopover />
+        )}
         {!settings.autosaveChat && (
           <Tooltip>
             <TooltipTrigger asChild>

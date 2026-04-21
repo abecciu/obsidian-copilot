@@ -4,6 +4,7 @@ import {
   subscribeToProjectChange,
   useChainType,
   useModelKey,
+  usePiModelId,
   useProjectLoading,
 } from "@/aiParams";
 import { ChainType } from "@/chainFactory";
@@ -116,6 +117,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const lexicalEditorRef = useRef<any>(null);
   const [currentModelKey, setCurrentModelKey] = useModelKey();
+  const [currentPiModelId, setCurrentPiModelId] = usePiModelId();
   const [currentChain] = useChainType();
   const [isProjectLoading] = useProjectLoading();
   const settings = useSettingsValue();
@@ -211,14 +213,15 @@ const ChatInput: React.FC<ChatInputProps> = ({
   }, [isProjectLoading, loadingMessages.length]);
 
   const getDisplayModelKey = (): string => {
-    if (
-      selectedProject &&
-      currentChain === ChainType.PROJECT_CHAIN &&
-      selectedProject.projectModelKey
-    ) {
-      return selectedProject.projectModelKey;
+    if (selectedProject && currentChain === ChainType.PROJECT_CHAIN) {
+      if (settings.agentBackend === "pi" && selectedProject.projectPiModelId) {
+        return selectedProject.projectPiModelId;
+      }
+      if (selectedProject.projectModelKey) {
+        return selectedProject.projectModelKey;
+      }
     }
-    return currentModelKey;
+    return settings.agentBackend === "pi" ? currentPiModelId : currentModelKey;
   };
 
   const onSendMessage = () => {
@@ -813,7 +816,11 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 // In project mode, we don't update the global model key
                 // as the project model takes precedence
                 if (currentChain !== ChainType.PROJECT_CHAIN) {
-                  setCurrentModelKey(modelKey);
+                  if (settings.agentBackend === "pi") {
+                    setCurrentPiModelId(modelKey);
+                  } else {
+                    setCurrentModelKey(modelKey);
+                  }
                 }
               }}
               className="tw-max-w-full tw-truncate"
