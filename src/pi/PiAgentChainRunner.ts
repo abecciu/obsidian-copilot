@@ -1,4 +1,11 @@
 import { ChainType } from "@/chainFactory";
+import {
+  createInitialReasoningState,
+  serializeReasoningBlock,
+  summarizeToolCall,
+  summarizeToolResult,
+  type LocalSearchSourceInfo,
+} from "@/LLMProviders/chainRunner/utils/AgentReasoningState";
 import { deduplicateSources } from "@/LLMProviders/chainRunner/utils/toolExecution";
 import { getSettings } from "@/settings/model";
 import { ChatMessage, ResponseMetadata } from "@/types/message";
@@ -7,6 +14,7 @@ import { getCurrentProject } from "@/aiParams";
 import { BaseChainRunner } from "@/LLMProviders/chainRunner/BaseChainRunner";
 import { buildPiConversation } from "./PiMessageAdapter";
 import { resolvePiChatModelId } from "./PiModelCatalog";
+import { renderPiAssistantMessage, renderPiAssistantTranscript } from "./PiMessageRendering";
 import { resolvePiApiKey, resolvePiModel } from "./PiModelResolver";
 import { getPiTools, type PiToolDetails, type PiToolSource } from "./PiToolRegistry";
 import { ToolManager } from "@/tools/toolManager";
@@ -60,10 +68,17 @@ export class PiAgentChainRunner extends BaseChainRunner {
         model,
         injectedContextBlocks: injectedContext.blocks,
       });
+      const initialMessageCount = conversation.history.length;
 
       let streamingText = "";
+      let latestVisibleResponse = "";
       let latestResponseMetadata: ResponseMetadata | undefined;
       const collectedSources = [...injectedContext.sources];
+      const toolArgsById = new Map<string, Record<string, unknown>>();
+      const reasoningState = createInitialReasoningState();
+      let reasoningTimerInterval: ReturnType<typeof setInterval> | null = null;
+      const allReasoningSteps: Array<{ timestamp: number; summary: string; toolName?: string }> =
+        [];
       const agent = new Agent({
         initialState: {
           model,
@@ -75,16 +90,130 @@ export class PiAgentChainRunner extends BaseChainRunner {
         getApiKey: async () => apiKey,
       });
 
+      const composeVisibleResponse = () => {
+        const reasoningMarkup =
+          reasoningState.status === "idle"
+            ? ""
+            : serializeReasoningBlock({
+                ...reasoningState,
+                steps:
+                  reasoningState.status === "reasoning" ? reasoningState.steps : allReasoningSteps,
+              });
+
+        if (!reasoningMarkup) {
+          return streamingText;
+        }
+
+        return streamingText ? `${reasoningMarkup}\n\n${streamingText}` : reasoningMarkup;
+      };
+
+      const pushVisibleResponse = () => {
+        latestVisibleResponse = composeVisibleResponse();
+        updateCurrentAiMessage(latestVisibleResponse);
+      };
+
+      const addReasoningStep = (summary: string, toolName?: string) => {
+        const step = {
+          timestamp: Date.now(),
+          summary,
+          toolName,
+        };
+
+        allReasoningSteps.push(step);
+        reasoningState.steps.push(step);
+        if (reasoningState.steps.length > 4) {
+          reasoningState.steps.shift();
+        }
+        pushVisibleResponse();
+      };
+
+      const startReasoning = () => {
+        if (reasoningState.status !== "idle") {
+          return;
+        }
+
+        reasoningState.status = "reasoning";
+        reasoningState.startTime = Date.now();
+        reasoningState.elapsedSeconds = 0;
+        reasoningState.steps = [];
+
+        reasoningTimerInterval = setInterval(() => {
+          if (reasoningState.status !== "reasoning" || !reasoningState.startTime) {
+            return;
+          }
+
+          reasoningState.elapsedSeconds = Math.floor(
+            (Date.now() - reasoningState.startTime) / 1000
+          );
+          pushVisibleResponse();
+        }, 100);
+      };
+
+      const finishReasoning = () => {
+        if (reasoningState.status === "idle") {
+          return;
+        }
+
+        if (reasoningTimerInterval) {
+          clearInterval(reasoningTimerInterval);
+          reasoningTimerInterval = null;
+        }
+
+        if (reasoningState.startTime) {
+          reasoningState.elapsedSeconds = Math.floor(
+            (Date.now() - reasoningState.startTime) / 1000
+          );
+        }
+
+        reasoningState.status = "complete";
+        pushVisibleResponse();
+      };
+
       const unsubscribe = agent.subscribe(async (event) => {
-        this.handleAgentEvent(event, updateCurrentAiMessage, {
+        this.handleAgentEvent(event, {
           onSources: (sources) => {
             collectedSources.push(...sources);
           },
           onText: (text) => {
             streamingText = text;
+            latestVisibleResponse = composeVisibleResponse();
+            updateCurrentAiMessage(latestVisibleResponse);
           },
           onMetadata: (metadata) => {
             latestResponseMetadata = metadata;
+          },
+          onToolStart: (toolCallId, toolName, args) => {
+            toolArgsById.set(toolCallId, args);
+            startReasoning();
+            addReasoningStep(summarizeToolCall(toolName, args), toolName);
+          },
+          onToolEnd: (toolCallId, toolName, result, isError) => {
+            const toolSources = (result as { details?: PiToolDetails })?.details?.sources || [];
+            const toolArgs = toolArgsById.get(toolCallId);
+            toolArgsById.delete(toolCallId);
+
+            const sourceInfo: LocalSearchSourceInfo | undefined =
+              toolName === "localSearch"
+                ? {
+                    titles: toolSources.map((source) => source.title),
+                    count: toolSources.length,
+                  }
+                : undefined;
+
+            if (isError || toolName === "localSearch") {
+              addReasoningStep(
+                summarizeToolResult(
+                  toolName,
+                  {
+                    success: !isError,
+                    result: this.stringifyToolResult(result),
+                  },
+                  sourceInfo,
+                  toolArgs
+                ),
+                toolName
+              );
+            }
           },
         });
       });
@@ -94,11 +223,19 @@ export class PiAgentChainRunner extends BaseChainRunner {
       try {
         await agent.prompt(conversation.currentUser);
       } finally {
+        finishReasoning();
         unsubscribe();
         abortController.signal.removeEventListener("abort", abortHandler);
       }
 
-      const finalResponse = streamingText || this.getFinalAssistantText(agent.state.messages);
+      const finalPlainResponse = this.getFinalAssistantText(agent.state.messages, initialMessageCount);
+      const finalVisibleText = this.getFinalAssistantDisplay(agent.state.messages, initialMessageCount);
+      if (finalVisibleText) {
+        streamingText = finalVisibleText;
+        latestVisibleResponse = composeVisibleResponse();
+      }
+
+      const finalResponse = latestVisibleResponse || finalPlainResponse;
       return await this.handleResponse(
         finalResponse,
         userMessage,
@@ -106,7 +243,7 @@ export class PiAgentChainRunner extends BaseChainRunner {
         addMessage,
         updateCurrentAiMessage,
         deduplicateSources(collectedSources),
-        finalResponse,
+        finalPlainResponse,
         latestResponseMetadata
       );
     } catch (error) {
@@ -144,35 +281,52 @@ export class PiAgentChainRunner extends BaseChainRunner {
    */
   private handleAgentEvent(
     event: AgentEvent,
-    updateCurrentAiMessage: (message: string) => void,
     callbacks: {
       onSources: (sources: PiToolSource[]) => void;
       onText: (text: string) => void;
       onMetadata: (metadata: ResponseMetadata) => void;
+      onToolStart: (
+        toolCallId: string,
+        toolName: string,
+        args: Record<string, unknown>
+      ) => void;
+      onToolEnd: (
+        toolCallId: string,
+        toolName: string,
+        result: unknown,
+        isError: boolean
+      ) => void;
     }
   ): void {
     if (event.type === "message_update" && event.message.role === "assistant") {
-      const text = this.extractAssistantText(event.message);
+      const shouldKeepTrailingThinkingOpen =
+        event.assistantMessageEvent.type === "thinking_start" ||
+        event.assistantMessageEvent.type === "thinking_delta";
+      const text = renderPiAssistantMessage(event.message, {
+        keepTrailingThinkingOpen: shouldKeepTrailingThinkingOpen,
+      });
       callbacks.onText(text);
-      updateCurrentAiMessage(text);
       return;
     }
 
     if (event.type === "message_end" && event.message.role === "assistant") {
-      const text = this.extractAssistantText(event.message);
+      const text = renderPiAssistantMessage(event.message);
       callbacks.onText(text);
       callbacks.onMetadata(
         this.buildResponseMetadata(event.message.stopReason, event.message.usage)
       );
-      updateCurrentAiMessage(text);
+      return;
+    }
+
+    if (event.type === "tool_execution_start") {
+      callbacks.onToolStart(event.toolCallId, event.toolName, event.args);
       return;
     }
 
     if (event.type === "tool_execution_end") {
       const toolSources = (event.result as { details?: PiToolDetails })?.details?.sources || [];
       callbacks.onSources(toolSources);
-      const toolStatus = `_Running ${event.toolName}..._`;
-      updateCurrentAiMessage(toolStatus);
+      callbacks.onToolEnd(event.toolCallId, event.toolName, event.result, event.isError);
     }
   }
 
@@ -257,14 +411,27 @@ export class PiAgentChainRunner extends BaseChainRunner {
   /**
    * Read the final assistant message from the completed pi transcript.
    */
-  private getFinalAssistantText(messages: any[]): string {
-    const lastAssistantMessage = [...messages]
+  private getFinalAssistantText(messages: any[], startIndex = 0): string {
+    const lastAssistantMessage = [...messages.slice(startIndex)]
       .reverse()
       .find((message) => message?.role === "assistant");
     if (!lastAssistantMessage) {
       return "";
     }
     return this.extractAssistantText(lastAssistantMessage);
+  }
+
+  /**
+   * Read the final assistant display transcript from the completed pi transcript.
+   */
+  private getFinalAssistantDisplay(messages: any[], startIndex = 0): string {
+    const turnAssistantMessages = messages
+      .slice(startIndex)
+      .filter((message) => message?.role === "assistant");
+    if (turnAssistantMessages.length === 0) {
+      return "";
+    }
+    return renderPiAssistantTranscript(turnAssistantMessages);
   }
 
   /**

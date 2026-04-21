@@ -19,9 +19,16 @@ import type { Message } from "@mariozechner/pi-ai";
 import type { CustomModel } from "@/aiParams";
 import { createChatChain, createChatMemory } from "@/commands/customCommandChatEngine";
 import { compactAssistantOutput } from "@/context/ChatHistoryCompactor";
+import {
+  createInitialReasoningState,
+  serializeReasoningBlock,
+  summarizeToolCall,
+  summarizeToolResult,
+} from "@/LLMProviders/chainRunner/utils/AgentReasoningState";
 import { ThinkBlockStreamer } from "@/LLMProviders/chainRunner/utils/ThinkBlockStreamer";
 import { ABORT_REASON } from "@/constants";
 import { logError } from "@/logger";
+import { renderPiAssistantMessage, renderPiAssistantTranscript } from "@/pi/PiMessageRendering";
 import { resolvePiApiKey, resolvePiModel } from "@/pi/PiModelResolver";
 import { useSettingsValue } from "@/settings/model";
 import { useRafThrottledCallback } from "@/hooks/use-raf-throttled-callback";
@@ -114,6 +121,17 @@ function extractPiAssistantText(message: { content?: any[]; errorMessage?: strin
     .join("");
 
   return text || message.errorMessage || "";
+}
+
+/**
+ * Convert a pi tool result into a readable string.
+ */
+function stringifyPiToolResult(result: unknown): string {
+  if (typeof result === "string") {
+    return result;
+  }
+
+  return JSON.stringify(result, null, 2);
 }
 
 /**
@@ -321,6 +339,7 @@ export function useStreamingChatSession(
       let memory: BaseChatMemory | null = null;
       let prompt = "";
       let committed: string | null = null;
+      let piCommitted: string | null = null;
 
       try {
         const isFirstTurn = !hasSavedContextOnceRef.current;
@@ -348,6 +367,127 @@ export function useStreamingChatSession(
           const resolvedPiModelId = (piModelId || settings.piAgent.modelId || "").trim();
           const resolvedModel = resolvePiModel(resolvedPiModelId);
           const apiKey = await resolvePiApiKey();
+          const initialPiMessageCount = piMessagesRef.current.length;
+          let latestPiVisibleResponse = "";
+          let latestPiAssistantResponse = "";
+          const piToolArgsById = new Map<string, Record<string, unknown>>();
+          const piReasoningState = createInitialReasoningState();
+          let piReasoningTimerInterval: ReturnType<typeof setInterval> | null = null;
+          const piReasoningHistory: Array<{ timestamp: number; summary: string; toolName?: string }> =
+            [];
+
+          /**
+           * Render a pi assistant message into the current display format.
+           */
+          const renderAssistantResponse = (
+            message: { content?: any[]; errorMessage?: string },
+            keepTrailingThinkingOpen = false
+          ): string => {
+            if (excludeThinking) {
+              return extractPiAssistantText(message);
+            }
+
+            return renderPiAssistantMessage(message, { keepTrailingThinkingOpen });
+          };
+
+          /**
+           * Compose the visible response, including any reasoning marker block.
+           */
+          const composeVisibleResponse = (): string => {
+            const reasoningMarkup =
+              piReasoningState.status === "idle"
+                ? ""
+                : serializeReasoningBlock({
+                    ...piReasoningState,
+                    steps:
+                      piReasoningState.status === "reasoning"
+                        ? piReasoningState.steps
+                        : piReasoningHistory,
+                  });
+
+            if (!reasoningMarkup) {
+              return latestPiAssistantResponse;
+            }
+
+            return latestPiAssistantResponse
+              ? `${reasoningMarkup}\n\n${latestPiAssistantResponse}`
+              : reasoningMarkup;
+          };
+
+          /**
+           * Push the latest visible pi response into the shared streaming callback.
+           */
+          const pushPiVisibleResponse = (): void => {
+            latestPiVisibleResponse = composeVisibleResponse();
+            turnScopedDelta(latestPiVisibleResponse);
+          };
+
+          /**
+           * Add a summarized tool/reasoning step to the visible response.
+           */
+          const addReasoningStep = (summary: string, toolName?: string): void => {
+            const step = {
+              timestamp: Date.now(),
+              summary,
+              toolName,
+            };
+
+            piReasoningHistory.push(step);
+            piReasoningState.steps.push(step);
+            if (piReasoningState.steps.length > 4) {
+              piReasoningState.steps.shift();
+            }
+            pushPiVisibleResponse();
+          };
+
+          /**
+           * Start the transient reasoning/timer block when a tool call begins.
+           */
+          const startReasoning = (): void => {
+            if (piReasoningState.status !== "idle") {
+              return;
+            }
+
+            piReasoningState.status = "reasoning";
+            piReasoningState.startTime = Date.now();
+            piReasoningState.elapsedSeconds = 0;
+            piReasoningState.steps = [];
+
+            piReasoningTimerInterval = setInterval(() => {
+              if (piReasoningState.status !== "reasoning" || !piReasoningState.startTime) {
+                return;
+              }
+
+              piReasoningState.elapsedSeconds = Math.floor(
+                (Date.now() - piReasoningState.startTime) / 1000
+              );
+              pushPiVisibleResponse();
+            }, 100);
+          };
+
+          /**
+           * Finalize the reasoning block once the pi turn finishes.
+           */
+          const finishReasoning = (): void => {
+            if (piReasoningState.status === "idle") {
+              return;
+            }
+
+            if (piReasoningTimerInterval) {
+              clearInterval(piReasoningTimerInterval);
+              piReasoningTimerInterval = null;
+            }
+
+            if (piReasoningState.startTime) {
+              piReasoningState.elapsedSeconds = Math.floor(
+                (Date.now() - piReasoningState.startTime) / 1000
+              );
+            }
+
+            piReasoningState.status = "complete";
+            pushPiVisibleResponse();
+          };
+
           const agent = new Agent({
             initialState: {
               model: resolvedModel,
@@ -361,12 +501,56 @@ export function useStreamingChatSession(
 
           const unsubscribe = agent.subscribe(async (event: AgentEvent) => {
             if (event.type === "message_update" && event.message.role === "assistant") {
-              handleDelta(extractPiAssistantText(event.message));
+              const shouldKeepTrailingThinkingOpen =
+                event.assistantMessageEvent.type === "thinking_start" ||
+                event.assistantMessageEvent.type === "thinking_delta";
+              latestPiAssistantResponse = renderAssistantResponse(
+                event.message,
+                shouldKeepTrailingThinkingOpen
+              );
+              pushPiVisibleResponse();
               return;
             }
 
             if (event.type === "message_end" && event.message.role === "assistant") {
-              handleDelta(extractPiAssistantText(event.message));
+              latestPiAssistantResponse = renderAssistantResponse(event.message);
+              pushPiVisibleResponse();
+              return;
+            }
+
+            if (event.type === "tool_execution_start") {
+              piToolArgsById.set(event.toolCallId, event.args);
+              startReasoning();
+              addReasoningStep(summarizeToolCall(event.toolName, event.args), event.toolName);
+              return;
+            }
+
+            if (event.type === "tool_execution_end") {
+              const toolArgs = piToolArgsById.get(event.toolCallId);
+              const sourceTitles =
+                (
+                  event.result as {
+                    details?: { sources?: Array<{ title?: string }> };
+                  }
+                )?.details?.sources
+                  ?.map((source) => source.title)
+                  .filter((title): title is string => typeof title === "string") || [];
+              piToolArgsById.delete(event.toolCallId);
+
+              addReasoningStep(
+                summarizeToolResult(
+                  event.toolName,
+                  {
+                    success: !event.isError,
+                    result: stringifyPiToolResult(event.result),
+                  },
+                  sourceTitles.length > 0
+                    ? { titles: sourceTitles, count: sourceTitles.length }
+                    : undefined,
+                  toolArgs
+                ),
+                event.toolName
+              );
             }
           });
           const abortHandler = () => agent.abort();
@@ -375,12 +559,28 @@ export function useStreamingChatSession(
           try {
             await agent.prompt(prompt);
           } finally {
+            finishReasoning();
             unsubscribe();
             abortController.signal.removeEventListener("abort", abortHandler);
           }
 
           if (!shouldSkipPersistOnAbort(abortController.signal)) {
             piMessagesRef.current = agent.state.messages.slice() as Message[];
+            const turnAssistantMessages = agent.state.messages
+              .slice(initialPiMessageCount)
+              .filter((message) => message?.role === "assistant");
+            piCommitted = excludeThinking
+              ? extractPiAssistantText(turnAssistantMessages[turnAssistantMessages.length - 1] || {})
+              : renderPiAssistantTranscript(turnAssistantMessages).trim();
+
+            if (!piCommitted) {
+              const lastAssistantMessage = [...agent.state.messages]
+                .reverse()
+                .find((message) => message?.role === "assistant");
+              if (lastAssistantMessage) {
+                piCommitted = renderAssistantResponse(lastAssistantMessage).trim();
+              }
+            }
           }
         } else {
           const chainAndMemory = await getOrCreateChain(abortController.signal);
@@ -407,7 +607,7 @@ export function useStreamingChatSession(
           onNonAbortErrorRef.current?.(error);
         }
       } finally {
-        const result = thinkStreamer.close().content.trim();
+        const result = isPiMode ? (piCommitted || "").trim() : thinkStreamer.close().content.trim();
 
         const shouldSkip = shouldSkipPersistOnAbort(abortController.signal);
         const isStale = turnIdRef.current !== currentTurnId;

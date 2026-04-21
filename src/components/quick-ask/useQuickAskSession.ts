@@ -89,7 +89,7 @@ export function useQuickAskSession(params: UseQuickAskSessionParams): QuickAskSe
     model: resolvedModel,
     piModelId: settings.agentBackend === "pi" ? selectedModelKey : undefined,
     systemPrompt: QUICK_COMMAND_SYSTEM_PROMPT,
-    excludeThinking: true,
+    excludeThinking: settings.agentBackend !== "pi",
     onNoModel: () => {
       const message =
         settings.agentBackend === "pi"

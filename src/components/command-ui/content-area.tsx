@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { PencilLine, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarkdownPreview } from "./markdown-preview";
+import { formatAIResponseForPlainText } from "@/utils/aiResponseDisplay";
 
 type ContentState =
   | { type: "idle" }
@@ -88,7 +89,8 @@ export function ContentArea({
     displayValue = "loading...";
     isDisabled = true;
   } else if (state.type === "result") {
-    displayValue = editable && value !== undefined ? value : state.text;
+    displayValue =
+      editable && value !== undefined ? value : formatAIResponseForPlainText(state.text);
     isDisabled = state.isStreaming || !editable;
   }
 

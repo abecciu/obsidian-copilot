@@ -15,7 +15,7 @@ import type { EditorView } from "@codemirror/view";
 import { PenLine } from "lucide-react";
 import { App, Component, MarkdownRenderer, Notice, MarkdownView } from "obsidian";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { preprocessAIResponse } from "@/utils/markdownPreprocess";
+import { formatAIResponseForPreview } from "@/utils/aiResponseDisplay";
 import { createRoot, Root } from "react-dom/client";
 import { CustomCommand } from "@/commands/type";
 import { useSettingsValue, updateSetting } from "@/settings/model";
@@ -155,7 +155,7 @@ function CustomCommandChatModalContent({
   const renderMarkdown = useCallback(async (content: string, el: HTMLElement) => {
     const comp = obsidianComponentRef.current;
     if (!comp) return;
-    const preprocessed = preprocessAIResponse(content);
+    const preprocessed = formatAIResponseForPreview(content);
     await MarkdownRenderer.renderMarkdown(preprocessed, el, filePathSnapshotRef.current, comp);
   }, []);
 
@@ -288,7 +288,7 @@ function CustomCommandChatModalContent({
     model: resolvedModel,
     piModelId: settings.agentBackend === "pi" ? selectedModelKey : undefined,
     systemPrompt: systemPrompt || "",
-    excludeThinking: true,
+    excludeThinking: settings.agentBackend !== "pi",
     onNoModel: () => {
       new Notice(
         settings.agentBackend === "pi"

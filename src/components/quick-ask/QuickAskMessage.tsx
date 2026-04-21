@@ -10,7 +10,10 @@ import { Button } from "@/components/ui/button";
 import { getErrorMessage, type ReplaceInvalidReason } from "@/editor/replaceGuard";
 import { logError } from "@/logger";
 import type CopilotPlugin from "@/main";
-import { preprocessAIResponse } from "@/utils/markdownPreprocess";
+import {
+  formatAIResponseForPlainText,
+  formatAIResponseForPreview,
+} from "@/utils/aiResponseDisplay";
 import type { QuickAskMessage } from "./types";
 
 interface QuickAskMessageProps {
@@ -67,7 +70,7 @@ export const QuickAskMessageComponent = React.memo(function QuickAskMessageCompo
       const sourcePath = filePathSnapshot ?? "";
 
       try {
-        const preprocessed = preprocessAIResponse(message.content);
+        const preprocessed = formatAIResponseForPreview(message.content);
         await MarkdownRenderer.renderMarkdown(preprocessed, targetEl, sourcePath, plugin);
       } catch (error) {
         logError("Failed to render markdown:", error);
@@ -76,7 +79,7 @@ export const QuickAskMessageComponent = React.memo(function QuickAskMessageCompo
 
         // Fallback to plain text if markdown rendering fails
         targetEl.empty();
-        targetEl.textContent = message.content;
+        targetEl.textContent = formatAIResponseForPlainText(message.content);
       }
 
       if (cancelled) return;
@@ -105,7 +108,7 @@ export const QuickAskMessageComponent = React.memo(function QuickAskMessageCompo
     return (
       <div className="tw-max-w-[95%] tw-self-start tw-rounded-lg tw-rounded-bl-sm tw-bg-secondary tw-px-3 tw-py-2">
         <div data-quick-ask-selectable className="tw-whitespace-pre-wrap tw-break-words tw-text-sm tw-text-normal">
-          {message.content}
+          {formatAIResponseForPlainText(message.content)}
           <span className="tw-animate-pulse tw-text-accent">▊</span>
         </div>
       </div>
