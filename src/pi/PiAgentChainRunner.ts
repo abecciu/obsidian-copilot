@@ -10,7 +10,7 @@ import { deduplicateSources } from "@/LLMProviders/chainRunner/utils/toolExecuti
 import { getSettings } from "@/settings/model";
 import { ChatMessage, ResponseMetadata } from "@/types/message";
 import { Agent, type AgentEvent } from "@mariozechner/pi-agent-core";
-import { getCurrentProject } from "@/aiParams";
+import { getCurrentProject, getPiThinkingLevelSelection } from "@/aiParams";
 import { BaseChainRunner } from "@/LLMProviders/chainRunner/BaseChainRunner";
 import { buildPiConversation } from "./PiMessageAdapter";
 import { resolvePiChatModelId } from "./PiModelCatalog";
@@ -20,6 +20,14 @@ import { getPiTools, type PiToolDetails, type PiToolSource } from "./PiToolRegis
 import { ToolManager } from "@/tools/toolManager";
 import { localSearchTool } from "@/tools/SearchTools";
 import { executePiExaWebSearch } from "./PiWebTools";
+
+/**
+ * Resolve the active Pi thinking level, honoring the transient chat override.
+ */
+function getActivePiThinkingLevel(): "off" | "minimal" | "low" | "medium" | "high" | "xhigh" {
+  const thinkingSelection = getPiThinkingLevelSelection();
+  return thinkingSelection === "default" ? getSettings().piAgent.thinkingLevel : thinkingSelection;
+}
 
 /**
  * Pi-backed chain runner that reuses Copilot's existing chat shell.
@@ -83,7 +91,7 @@ export class PiAgentChainRunner extends BaseChainRunner {
         initialState: {
           model,
           systemPrompt: conversation.systemPrompt,
-          thinkingLevel: getSettings().piAgent.thinkingLevel,
+          thinkingLevel: getActivePiThinkingLevel(),
           tools: this.getActivePiTools(),
           messages: conversation.history,
         },
@@ -228,8 +236,14 @@ export class PiAgentChainRunner extends BaseChainRunner {
         abortController.signal.removeEventListener("abort", abortHandler);
       }
 
-      const finalPlainResponse = this.getFinalAssistantText(agent.state.messages, initialMessageCount);
-      const finalVisibleText = this.getFinalAssistantDisplay(agent.state.messages, initialMessageCount);
+      const finalPlainResponse = this.getFinalAssistantText(
+        agent.state.messages,
+        initialMessageCount
+      );
+      const finalVisibleText = this.getFinalAssistantDisplay(
+        agent.state.messages,
+        initialMessageCount
+      );
       if (finalVisibleText) {
         streamingText = finalVisibleText;
         latestVisibleResponse = composeVisibleResponse();
@@ -285,17 +299,8 @@ export class PiAgentChainRunner extends BaseChainRunner {
       onSources: (sources: PiToolSource[]) => void;
       onText: (text: string) => void;
       onMetadata: (metadata: ResponseMetadata) => void;
-      onToolStart: (
-        toolCallId: string,
-        toolName: string,
-        args: Record<string, unknown>
-      ) => void;
-      onToolEnd: (
-        toolCallId: string,
-        toolName: string,
-        result: unknown,
-        isError: boolean
-      ) => void;
+      onToolStart: (toolCallId: string, toolName: string, args: Record<string, unknown>) => void;
+      onToolEnd: (toolCallId: string, toolName: string, result: unknown, isError: boolean) => void;
     }
   ): void {
     if (event.type === "message_update" && event.message.role === "assistant") {

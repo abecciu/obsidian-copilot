@@ -16,7 +16,11 @@ import type { BaseChatMemory } from "@langchain/classic/memory";
 import { Agent, type AgentEvent } from "@mariozechner/pi-agent-core";
 import type { Message } from "@mariozechner/pi-ai";
 
-import type { CustomModel } from "@/aiParams";
+import {
+  getPiThinkingLevelSelection,
+  type CustomModel,
+  type PiThinkingLevelSelection,
+} from "@/aiParams";
 import { createChatChain, createChatMemory } from "@/commands/customCommandChatEngine";
 import { compactAssistantOutput } from "@/context/ChatHistoryCompactor";
 import {
@@ -45,6 +49,8 @@ export interface UseStreamingChatSessionParams {
   model: CustomModel | null;
   /** Pi model ID to use when the pi backend is active. */
   piModelId?: string | null;
+  /** Optional Pi thinking-level override for the current streaming session. */
+  piThinkingLevel?: PiThinkingLevelSelection | null;
   /** System prompt for the chain (empty string allowed). */
   systemPrompt: string;
   /** Exclude thinking blocks from streamed output (default: true). */
@@ -111,6 +117,17 @@ function shouldSkipPersistOnAbort(signal: AbortSignal): boolean {
 }
 
 /**
+ * Resolve the active Pi thinking level, honoring transient overrides before settings defaults.
+ */
+function resolvePiThinkingLevel(
+  settingsThinkingLevel: "minimal" | "low" | "medium" | "high" | "xhigh",
+  piThinkingLevel?: PiThinkingLevelSelection | null
+): "off" | "minimal" | "low" | "medium" | "high" | "xhigh" {
+  const selectedThinkingLevel = piThinkingLevel ?? getPiThinkingLevelSelection();
+  return selectedThinkingLevel === "default" ? settingsThinkingLevel : selectedThinkingLevel;
+}
+
+/**
  * Extract plain text from a pi assistant message.
  */
 function extractPiAssistantText(message: { content?: any[]; errorMessage?: string }): string {
@@ -143,6 +160,7 @@ export function useStreamingChatSession(
   const {
     model,
     piModelId,
+    piThinkingLevel,
     systemPrompt,
     excludeThinking = true,
     onNoModel,
@@ -366,6 +384,10 @@ export function useStreamingChatSession(
         if (isPiMode) {
           const resolvedPiModelId = (piModelId || settings.piAgent.modelId || "").trim();
           const resolvedModel = resolvePiModel(resolvedPiModelId);
+          const resolvedPiThinkingLevel = resolvePiThinkingLevel(
+            settings.piAgent.thinkingLevel,
+            piThinkingLevel
+          );
           const apiKey = await resolvePiApiKey();
           const initialPiMessageCount = piMessagesRef.current.length;
           let latestPiVisibleResponse = "";
@@ -373,8 +395,11 @@ export function useStreamingChatSession(
           const piToolArgsById = new Map<string, Record<string, unknown>>();
           const piReasoningState = createInitialReasoningState();
           let piReasoningTimerInterval: ReturnType<typeof setInterval> | null = null;
-          const piReasoningHistory: Array<{ timestamp: number; summary: string; toolName?: string }> =
-            [];
+          const piReasoningHistory: Array<{
+            timestamp: number;
+            summary: string;
+            toolName?: string;
+          }> = [];
 
           /**
            * Render a pi assistant message into the current display format.
@@ -492,7 +517,7 @@ export function useStreamingChatSession(
             initialState: {
               model: resolvedModel,
               systemPrompt,
-              thinkingLevel: settings.piAgent.thinkingLevel,
+              thinkingLevel: resolvedPiThinkingLevel,
               tools: [],
               messages: piMessagesRef.current.slice(),
             },
@@ -570,7 +595,9 @@ export function useStreamingChatSession(
               .slice(initialPiMessageCount)
               .filter((message) => message?.role === "assistant");
             piCommitted = excludeThinking
-              ? extractPiAssistantText(turnAssistantMessages[turnAssistantMessages.length - 1] || {})
+              ? extractPiAssistantText(
+                  turnAssistantMessages[turnAssistantMessages.length - 1] || {}
+                )
               : renderPiAssistantTranscript(turnAssistantMessages).trim();
 
             if (!piCommitted) {
@@ -663,6 +690,7 @@ export function useStreamingChatSession(
       isPiMode,
       model,
       piModelId,
+      piThinkingLevel,
       setStreamingTextThrottled,
       settings.piAgent.modelId,
       settings.piAgent.thinkingLevel,

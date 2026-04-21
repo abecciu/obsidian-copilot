@@ -5,12 +5,14 @@ import {
   useChainType,
   useModelKey,
   usePiModelId,
+  usePiThinkingLevelSelection,
   useProjectLoading,
 } from "@/aiParams";
 import { ChainType } from "@/chainFactory";
 import { AddImageModal } from "@/components/modals/AddImageModal";
 import { Button } from "@/components/ui/button";
 import { ModelSelector } from "@/components/ui/ModelSelector";
+import { PiThinkingLevelSelector } from "@/components/ui/PiThinkingLevelSelector";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ChatToolControls } from "./ChatToolControls";
 import { isPlusChain } from "@/utils";
@@ -118,6 +120,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   const lexicalEditorRef = useRef<any>(null);
   const [currentModelKey, setCurrentModelKey] = useModelKey();
   const [currentPiModelId, setCurrentPiModelId] = usePiModelId();
+  const [currentPiThinkingLevel, setCurrentPiThinkingLevel] = usePiThinkingLevelSelection();
   const [currentChain] = useChainType();
   const [isProjectLoading] = useProjectLoading();
   const settings = useSettingsValue();
@@ -806,25 +809,35 @@ const ChatInput: React.FC<ChatInputProps> = ({
             <span>Generating...</span>
           </div>
         ) : (
-          <div className="tw-min-w-0 tw-flex-1">
-            <ModelSelector
-              variant="ghost2"
-              size="fit"
-              disabled={disableModelSwitch}
-              value={getDisplayModelKey()}
-              onChange={(modelKey) => {
-                // In project mode, we don't update the global model key
-                // as the project model takes precedence
-                if (currentChain !== ChainType.PROJECT_CHAIN) {
-                  if (settings.agentBackend === "pi") {
-                    setCurrentPiModelId(modelKey);
-                  } else {
-                    setCurrentModelKey(modelKey);
+          <div className="tw-flex tw-min-w-0 tw-flex-1 tw-items-center tw-gap-1">
+            <div className="tw-min-w-0 tw-flex-1">
+              <ModelSelector
+                variant="ghost2"
+                size="fit"
+                disabled={disableModelSwitch}
+                value={getDisplayModelKey()}
+                onChange={(modelKey) => {
+                  // In project mode, we don't update the global model key
+                  // as the project model takes precedence
+                  if (currentChain !== ChainType.PROJECT_CHAIN) {
+                    if (settings.agentBackend === "pi") {
+                      setCurrentPiModelId(modelKey);
+                    } else {
+                      setCurrentModelKey(modelKey);
+                    }
                   }
-                }
-              }}
-              className="tw-max-w-full tw-truncate"
-            />
+                }}
+                className="tw-max-w-full tw-truncate"
+              />
+            </div>
+            {settings.agentBackend === "pi" && (
+              <PiThinkingLevelSelector
+                disabled={disableModelSwitch}
+                value={currentPiThinkingLevel}
+                onChange={setCurrentPiThinkingLevel}
+                className="tw-max-w-[9.5rem] tw-shrink-0"
+              />
+            )}
           </div>
         )}
 

@@ -3,6 +3,7 @@ import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 
 import { ModelCapability, ReasoningEffort, Verbosity } from "@/constants";
+import type { PiAgentThinkingLevel } from "@/settings/model";
 import { settingsAtom, settingsStore } from "@/settings/model";
 import { SelectedTextContext } from "@/types/message";
 import { atom, useAtom } from "jotai";
@@ -32,6 +33,22 @@ const piModelIdAtom = atom(
   },
   (get, set, newValue) => {
     set(userPiModelIdAtom, newValue);
+  }
+);
+
+export type PiThinkingLevelSelection = "default" | "off" | PiAgentThinkingLevel;
+
+const userPiThinkingLevelAtom = atom<PiThinkingLevelSelection | null>(null);
+const piThinkingLevelAtom = atom(
+  (get) => {
+    const userValue = get(userPiThinkingLevelAtom);
+    if (userValue !== null) {
+      return userValue;
+    }
+    return "default" as const;
+  },
+  (_get, set, newValue: PiThinkingLevelSelection) => {
+    set(userPiThinkingLevelAtom, newValue === "default" ? null : newValue);
   }
 );
 
@@ -221,6 +238,20 @@ export function subscribeToPiModelIdChange(callback: () => void): () => void {
 
 export function usePiModelId() {
   return useAtom(piModelIdAtom, {
+    store: settingsStore,
+  });
+}
+
+export function setPiThinkingLevelSelection(thinkingLevel: PiThinkingLevelSelection) {
+  settingsStore.set(piThinkingLevelAtom, thinkingLevel);
+}
+
+export function getPiThinkingLevelSelection(): PiThinkingLevelSelection {
+  return settingsStore.get(piThinkingLevelAtom);
+}
+
+export function usePiThinkingLevelSelection() {
+  return useAtom(piThinkingLevelAtom, {
     store: settingsStore,
   });
 }
