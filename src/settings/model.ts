@@ -172,6 +172,12 @@ export interface CopilotSettings {
   selfHostSearchProvider: "firecrawl" | "perplexity";
   /** Firecrawl API key for self-host web search */
   firecrawlApiKey: string;
+  /** Exa API key for Pi web search */
+  exaApiKey: string;
+  /** Base URL for optional Pi tool proxy endpoints, e.g. https://toolproxy.example.com */
+  toolProxyBaseUrl: string;
+  /** Bearer token for the Pi tool proxy */
+  toolProxyApiKey: string;
   /** Perplexity API key for self-host web search via Sonar */
   perplexityApiKey: string;
   /** Supadata API key for self-host YouTube transcripts */
@@ -576,6 +582,16 @@ export function sanitizeSettings(settings: CopilotSettings): CopilotSettings {
     )
   ) {
     sanitizedSettings.selfHostSearchProvider = DEFAULT_SETTINGS.selfHostSearchProvider;
+  }
+
+  if (typeof sanitizedSettings.toolProxyBaseUrl !== "string") {
+    sanitizedSettings.toolProxyBaseUrl = DEFAULT_SETTINGS.toolProxyBaseUrl;
+  } else {
+    sanitizedSettings.toolProxyBaseUrl = sanitizedSettings.toolProxyBaseUrl.trim();
+  }
+
+  if (typeof sanitizedSettings.toolProxyApiKey !== "string") {
+    sanitizedSettings.toolProxyApiKey = DEFAULT_SETTINGS.toolProxyApiKey;
   }
 
   // Ensure passMarkdownImages has a default value

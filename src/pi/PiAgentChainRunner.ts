@@ -19,7 +19,7 @@ import { resolvePiApiKey, resolvePiModel } from "./PiModelResolver";
 import { getPiTools, type PiToolDetails, type PiToolSource } from "./PiToolRegistry";
 import { ToolManager } from "@/tools/toolManager";
 import { localSearchTool } from "@/tools/SearchTools";
-import { selfHostWebSearch } from "@/LLMProviders/selfHostServices";
+import { executePiExaWebSearch } from "./PiWebTools";
 
 /**
  * Pi-backed chain runner that reuses Copilot's existing chat shell.
@@ -356,21 +356,9 @@ export class PiAgentChainRunner extends BaseChainRunner {
 
     if (shouldSearchWeb) {
       updateLoadingMessage?.("Searching the web...");
-      const webSearchResult = await selfHostWebSearch(this.stripToolMarkers(originalText));
-      blocks.push(
-        `## Web Search Results\n\n${webSearchResult.content}\n\n${
-          webSearchResult.citations.length > 0
-            ? `Sources:\n${webSearchResult.citations.map((citation) => `- ${citation}`).join("\n")}`
-            : ""
-        }`.trim()
-      );
-      sources.push(
-        ...webSearchResult.citations.map((citation) => ({
-          title: citation,
-          path: citation,
-          score: 1,
-        }))
-      );
+      const webSearchResult = await executePiExaWebSearch(this.stripToolMarkers(originalText));
+      blocks.push(`## Web Search Results\n\n${webSearchResult.text}`);
+      sources.push(...webSearchResult.sources);
     }
 
     return { blocks, sources };

@@ -167,6 +167,8 @@ export function summarizeToolResult(
     }
     case "webSearch":
       return "Retrieved web search results";
+    case "webFetch":
+      return "Fetched page content";
     case "getTimeRangeMs":
       return "Calculated time range";
     case "readFile":
@@ -330,6 +332,13 @@ export function summarizeToolCall(
       }
       return "Searching the web";
     }
+    case "webFetch": {
+      const url = args?.url as string | undefined;
+      if (url) {
+        return `Fetching "${truncateUrl(url)}"`;
+      }
+      return "Fetching a web page";
+    }
     case "getTimeRangeMs":
       return "Calculating time range";
     case "readFile": {
@@ -468,4 +477,14 @@ export function extractFirstSentence(content: string): string | null {
 
   const firstLine = content.trim().split("\n")[0];
   return truncate(firstLine, 100);
+}
+
+/**
+ * Truncate URLs for compact tool-call summaries.
+ *
+ * @param url - URL to truncate.
+ * @returns Truncated URL string.
+ */
+function truncateUrl(url: string): string {
+  return truncate(url, 40);
 }

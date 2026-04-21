@@ -156,6 +156,7 @@ export function getToolDisplayName(toolName: string): string {
 
   const displayNameMap: Record<string, string> = {
     webSearch: "web search",
+    webFetch: "web fetch",
     getFileTree: "file tree",
     getCurrentTime: "current time",
     getTimeRangeMs: "time range",
@@ -187,6 +188,7 @@ export function getToolEmoji(toolName: string): string {
   const emojiMap: Record<string, string> = {
     localSearch: "🔍",
     webSearch: "🌐",
+    webFetch: "📄",
     getFileTree: "📁",
     getCurrentTime: "🕒",
     getTimeRangeMs: "📅",

@@ -45,6 +45,15 @@ describe("AgentReasoningState tool summaries", () => {
     );
   });
 
+  test("summarizeToolCall and summarizeToolResult handle webFetch", () => {
+    expect(summarizeToolCall("webFetch", { url: "https://example.com/article" })).toBe(
+      'Fetching "https://example.com/article"'
+    );
+    expect(summarizeToolResult("webFetch", { success: true }, undefined, {})).toBe(
+      "Fetched page content"
+    );
+  });
+
   test("summarizeToolResult failure path reuses CLI call summary", () => {
     expect(
       summarizeToolResult("obsidianRandomRead", { success: false }, undefined, { vault: "VaultA" })

@@ -200,6 +200,66 @@ export const BasicSettings: React.FC = () => {
                     }
                   />
                 </SettingItem>
+
+                <SettingItem
+                  type="text"
+                  title="Tool Proxy Base URL"
+                  description="Optional base URL for Pi web tool proxying. When set, Pi webSearch uses this proxy instead of calling Exa directly."
+                  value={settings.toolProxyBaseUrl}
+                  onChange={(value) => updateSetting("toolProxyBaseUrl", value)}
+                  placeholder="https://toolproxy.zup.sh"
+                />
+
+                <SettingItem
+                  type="password"
+                  title="Tool Proxy Token"
+                  description="Bearer token sent to the Pi tool proxy when Tool Proxy Base URL is configured."
+                  value={settings.toolProxyApiKey}
+                  onChange={(value) => updateSetting("toolProxyApiKey", value)}
+                  placeholder="shared bearer token"
+                />
+
+                <SettingItem
+                  type="password"
+                  title="Exa API Key"
+                  description={
+                    <span>
+                      API key for the Pi `webSearch` tool when no proxy is configured.{" "}
+                      <a
+                        href="https://dashboard.exa.ai/api-keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="tw-text-accent"
+                      >
+                        Get API key &rarr;
+                      </a>
+                    </span>
+                  }
+                  value={settings.exaApiKey}
+                  onChange={(value) => updateSetting("exaApiKey", value)}
+                  placeholder="exa-..."
+                />
+
+                <SettingItem
+                  type="password"
+                  title="Firecrawl API Key"
+                  description={
+                    <span>
+                      API key for the Pi `webFetch` tool.{" "}
+                      <a
+                        href="https://docs.firecrawl.dev"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="tw-text-accent"
+                      >
+                        Firecrawl docs &rarr;
+                      </a>
+                    </span>
+                  }
+                  value={settings.firecrawlApiKey}
+                  onChange={(value) => updateSetting("firecrawlApiKey", value)}
+                  placeholder="fc-..."
+                />
               </>
             )}
 

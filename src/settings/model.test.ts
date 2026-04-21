@@ -231,6 +231,9 @@ describe("sanitizeSettings - pi backend settings", () => {
   it("sanitizes malformed nested piAgent settings", () => {
     const sanitized = sanitizeSettings({
       ...DEFAULT_SETTINGS,
+      exaApiKey: "exa-live-key",
+      toolProxyBaseUrl: " https://toolproxy.zup.sh/ ",
+      toolProxyApiKey: "proxy-token",
       piAgent: {
         apiMode: "bad-api-mode",
         provider: 42,
@@ -254,6 +257,9 @@ describe("sanitizeSettings - pi backend settings", () => {
       ],
       enabledToolIds: ["localSearch", "webSearch"],
     });
+    expect(sanitized.exaApiKey).toBe("exa-live-key");
+    expect(sanitized.toolProxyBaseUrl).toBe("https://toolproxy.zup.sh/");
+    expect(sanitized.toolProxyApiKey).toBe("proxy-token");
   });
 
   it("sanitizes malformed pi model catalog and quick command pi model values", () => {

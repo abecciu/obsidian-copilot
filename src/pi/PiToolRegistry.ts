@@ -1,6 +1,6 @@
 import { getSettings } from "@/settings/model";
 import { selfHostWebSearch } from "@/LLMProviders/selfHostServices";
-import { logInfo } from "@/logger";
+import { logError, logInfo, logWarn } from "@/logger";
 import { readNoteTool } from "@/tools/NoteTools";
 import { ToolManager } from "@/tools/toolManager";
 import {
@@ -13,6 +13,7 @@ import { localSearchTool } from "@/tools/SearchTools";
 import { writeFileTool, editFileTool } from "@/tools/ComposerTools";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type, type Static } from "@sinclair/typebox";
+import { getCustomPiToolDefinitions } from "./PiCustomTools";
 
 /**
  * Source metadata collected from pi tool execution.
@@ -32,10 +33,19 @@ export interface PiToolDetails {
   sources: PiToolSource[];
 }
 
-interface PiToolDefinition {
+/**
+ * A concrete Pi tool entry together with the settings id used to enable it.
+ */
+export interface PiToolDefinition {
   id: string;
   tool: AgentTool<any, PiToolDetails>;
+  enabledByDefault?: boolean;
 }
+
+/**
+ * Provider function used to contribute Pi tools from fork-owned extension points.
+ */
+export type PiToolProvider = () => PiToolDefinition[];
 
 const timeRangeSchema = Type.Object({
   startTime: Type.Number(),
@@ -164,7 +174,7 @@ const webSearchPiTool: AgentTool<typeof webSearchParameters, PiToolDetails> = {
   execute: async (_toolCallId, params) => executePiWebSearch(params),
 };
 
-const PI_TOOL_DEFINITIONS: PiToolDefinition[] = [
+const BUILTIN_PI_TOOL_DEFINITIONS: PiToolDefinition[] = [
   { id: "localSearch", tool: localSearchPiTool },
   { id: "readNote", tool: readNotePiTool },
   { id: "webSearch", tool: webSearchPiTool },
@@ -176,14 +186,104 @@ const PI_TOOL_DEFINITIONS: PiToolDefinition[] = [
   { id: "convertTimeBetweenTimezones", tool: convertTimeBetweenTimezonesPiTool },
 ];
 
+const piToolProviders = new Map<string, PiToolProvider>([
+  ["builtin", () => BUILTIN_PI_TOOL_DEFINITIONS],
+  ["custom", getCustomPiToolDefinitions],
+]);
+
+/**
+ * Register a fork-owned Pi tool provider.
+ */
+export function registerPiToolProvider(id: string, provider: PiToolProvider): void {
+  piToolProviders.set(id, provider);
+}
+
+/**
+ * Remove a previously registered Pi tool provider.
+ */
+export function unregisterPiToolProvider(id: string): void {
+  piToolProviders.delete(id);
+}
+
+/**
+ * Reset the dynamic provider registry to its built-in state.
+ * Intended for tests.
+ */
+export function resetPiToolProvidersForTests(): void {
+  piToolProviders.clear();
+  piToolProviders.set("builtin", () => BUILTIN_PI_TOOL_DEFINITIONS);
+  piToolProviders.set("custom", getCustomPiToolDefinitions);
+}
+
 /**
  * Return the enabled pi tools from settings.
  */
 export function getPiTools(): AgentTool<any, PiToolDetails>[] {
   const enabledToolIds = new Set(getSettings().piAgent.enabledToolIds);
-  return PI_TOOL_DEFINITIONS.filter((definition) => enabledToolIds.has(definition.id)).map(
-    (definition) => definition.tool
-  );
+  return getPiToolDefinitions()
+    .filter((definition) => isPiToolEnabled(definition, enabledToolIds))
+    .map((definition) => definition.tool);
+}
+
+/**
+ * Return all Pi tool definitions after merging built-in and custom providers.
+ */
+export function getPiToolDefinitions(): PiToolDefinition[] {
+  const toolDefinitions: PiToolDefinition[] = [];
+  const seenToolIds = new Set<string>();
+  const toolIndexById = new Map<string, number>();
+  const providerByToolId = new Map<string, string>();
+
+  for (const [providerId, provider] of piToolProviders.entries()) {
+    let providedDefinitions: PiToolDefinition[] = [];
+
+    try {
+      providedDefinitions = provider();
+    } catch (error) {
+      logError(`[PiToolRegistry] Failed to load Pi tool provider '${providerId}'`, error);
+      continue;
+    }
+
+    for (const definition of providedDefinitions) {
+      if (!definition?.id || !definition?.tool?.name) {
+        logWarn(`[PiToolRegistry] Skipping invalid Pi tool definition from '${providerId}'`);
+        continue;
+      }
+
+      if (seenToolIds.has(definition.id)) {
+        const previousProviderId = providerByToolId.get(definition.id);
+        if (previousProviderId === "builtin" && providerId !== "builtin") {
+          const existingIndex = toolIndexById.get(definition.id);
+          if (existingIndex !== undefined) {
+            logInfo(
+              `[PiToolRegistry] Overriding builtin Pi tool '${definition.id}' with '${providerId}'`
+            );
+            toolDefinitions[existingIndex] = definition;
+            providerByToolId.set(definition.id, providerId);
+          }
+          continue;
+        }
+
+        logWarn(
+          `[PiToolRegistry] Skipping duplicate Pi tool id '${definition.id}' from '${providerId}'`
+        );
+        continue;
+      }
+
+      if (definition.tool.name !== definition.id) {
+        logWarn(
+          `[PiToolRegistry] Pi tool id '${definition.id}' does not match tool name '${definition.tool.name}'`
+        );
+      }
+
+      seenToolIds.add(definition.id);
+      toolIndexById.set(definition.id, toolDefinitions.length);
+      providerByToolId.set(definition.id, providerId);
+      toolDefinitions.push(definition);
+    }
+  }
+
+  return toolDefinitions;
 }
 
 /**
@@ -206,6 +306,17 @@ async function executeStructuredTool<TParameters>(
       sources,
     },
   };
+}
+
+/**
+ * Determine whether a Pi tool should be enabled for the current settings.
+ */
+function isPiToolEnabled(definition: PiToolDefinition, enabledToolIds: Set<string>): boolean {
+  if (enabledToolIds.has(definition.id)) {
+    return true;
+  }
+
+  return definition.enabledByDefault === true;
 }
 
 /**

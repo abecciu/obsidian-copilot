@@ -1,6 +1,7 @@
 const mockGetSettings = jest.fn();
 const mockCallTool = jest.fn();
 const mockSelfHostWebSearch = jest.fn();
+const mockGetCustomPiToolDefinitions = jest.fn(() => []);
 
 jest.mock("@/settings/model", () => ({
   getSettings: () => mockGetSettings(),
@@ -38,13 +39,26 @@ jest.mock("@/LLMProviders/selfHostServices", () => ({
 
 jest.mock("@/logger", () => ({
   logInfo: jest.fn(),
+  logWarn: jest.fn(),
+  logError: jest.fn(),
 }));
 
-import { getPiTools } from "./PiToolRegistry";
+jest.mock("./PiCustomTools", () => ({
+  getCustomPiToolDefinitions: () => mockGetCustomPiToolDefinitions(),
+}));
+
+import { Type } from "@sinclair/typebox";
+import {
+  getPiTools,
+  registerPiToolProvider,
+  resetPiToolProvidersForTests,
+} from "./PiToolRegistry";
 
 describe("getPiTools", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetPiToolProvidersForTests();
+    mockGetCustomPiToolDefinitions.mockReturnValue([]);
   });
 
   it("returns only the tools enabled in pi settings", () => {
@@ -148,5 +162,124 @@ describe("getPiTools", () => {
         score: 1,
       },
     ]);
+  });
+
+  it("includes custom tools enabled by default from registered providers", () => {
+    mockGetSettings.mockReturnValue({
+      piAgent: {
+        enabledToolIds: ["localSearch"],
+      },
+    });
+
+    registerPiToolProvider("test-custom", () => [
+      {
+        id: "customEcho",
+        enabledByDefault: true,
+        tool: {
+          name: "customEcho",
+          label: "Custom Echo",
+          description: "Echoes text",
+          parameters: Type.Object({
+            text: Type.String(),
+          }),
+          execute: async (_toolCallId, params) => ({
+            content: [{ type: "text", text: String(params.text) }],
+            details: {
+              rawResult: params,
+              sources: [],
+            },
+          }),
+        },
+      },
+    ]);
+
+    const tools = getPiTools();
+
+    expect(tools.map((tool) => tool.name)).toEqual(["localSearch", "customEcho"]);
+  });
+
+  it("lets a custom provider override the builtin Pi webSearch tool", async () => {
+    mockGetSettings.mockReturnValue({
+      piAgent: {
+        enabledToolIds: ["webSearch"],
+      },
+    });
+
+    registerPiToolProvider("test-custom-override", () => [
+      {
+        id: "webSearch",
+        enabledByDefault: true,
+        tool: {
+          name: "webSearch",
+          label: "Custom Web Search",
+          description: "Override",
+          parameters: Type.Object({
+            query: Type.String(),
+          }),
+          execute: async (_toolCallId, params) => ({
+            content: [{ type: "text", text: `override:${String(params.query)}` }],
+            details: {
+              rawResult: params,
+              sources: [],
+            },
+          }),
+        },
+      },
+    ]);
+
+    const webSearchTool = getPiTools().find((tool) => tool.name === "webSearch");
+    const result = await webSearchTool!.execute("tool-call-override", {
+      query: "override me",
+    });
+
+    expect(webSearchTool?.label).toBe("Custom Web Search");
+    expect(result.content).toEqual([{ type: "text", text: "override:override me" }]);
+    expect(mockSelfHostWebSearch).not.toHaveBeenCalled();
+  });
+
+  it("ignores duplicate custom tool ids and keeps the first definition", () => {
+    mockGetSettings.mockReturnValue({
+      piAgent: {
+        enabledToolIds: ["localSearch"],
+      },
+    });
+
+    registerPiToolProvider("test-custom-a", () => [
+      {
+        id: "duplicateTool",
+        enabledByDefault: true,
+        tool: {
+          name: "duplicateTool",
+          label: "Duplicate Tool A",
+          description: "First duplicate",
+          parameters: Type.Object({}),
+          execute: async () => ({
+            content: [{ type: "text", text: "a" }],
+            details: { rawResult: "a", sources: [] },
+          }),
+        },
+      },
+    ]);
+    registerPiToolProvider("test-custom-b", () => [
+      {
+        id: "duplicateTool",
+        enabledByDefault: true,
+        tool: {
+          name: "duplicateTool",
+          label: "Duplicate Tool B",
+          description: "Second duplicate",
+          parameters: Type.Object({}),
+          execute: async () => ({
+            content: [{ type: "text", text: "b" }],
+            details: { rawResult: "b", sources: [] },
+          }),
+        },
+      },
+    ]);
+
+    const tools = getPiTools();
+
+    expect(tools.map((tool) => tool.name)).toEqual(["localSearch", "duplicateTool"]);
+    expect(tools.find((tool) => tool.name === "duplicateTool")?.label).toBe("Duplicate Tool A");
   });
 });
