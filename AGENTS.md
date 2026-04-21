@@ -279,3 +279,126 @@ The TODO.md should be:
   - Non-project chats stored in default repository
   - Backwards compatible - loads existing messages from ProjectManager cache
   - Zero configuration required - works automatically
+
+## Fork Maintenance Notes
+
+This fork adds a **pi-agent backend** while intentionally keeping as much of the upstream Copilot UI and Obsidian integration intact as possible.
+
+### Fork Design Goal
+
+- Treat upstream Copilot as the **shell**
+- Keep fork-owned runtime code in `src/pi/`
+- Keep upstream files as **thin integration seams**
+- Prefer backend dispatch, adapters, and small conditional branches over broad rewrites
+- Avoid changing upstream prompt content unless the user explicitly asks
+
+### Current Pi Integration Seams
+
+- `src/pi/`
+  - Fork-owned Pi runtime code should live here whenever possible
+  - This includes model resolution, transcript rendering, tool adaptation, and backend-specific helpers
+- `src/LLMProviders/chainManager.ts`
+  - Backend dispatch seam
+  - Should stay thin: choose upstream runner vs Pi runner, not implement Pi logic inline
+- `src/pi/PiAgentChainRunner.ts`
+  - Main chat Pi runtime path
+  - Reuses existing Copilot chat shell and message handling
+- `src/hooks/use-streaming-chat-session.ts`
+  - Shared Quick Ask / custom command streaming seam
+  - Pi support here should remain generic and reusable across these lightweight chat surfaces
+- `src/settings/model.ts` and `src/settings/v2/`
+  - Settings seam for backend selection and Pi-specific configuration
+  - Keep Pi settings grouped and clearly separated from upstream provider settings where possible
+- UI files such as chat panels, Quick Ask, and command modals
+  - Prefer rendering adapters and backend-aware selectors over duplicating UI components
+
+### License and Entitlement Rules
+
+- When `agentBackend === "pi"`, Copilot Plus license checks must be bypassed
+- Do not let Pi mode depend on upstream Copilot Plus entitlement state
+- New Plus-gated UI/features must be reviewed to ensure Pi mode does not accidentally inherit those restrictions
+- If upstream adds new license or entitlement checks, patch them at the entitlement/helper seam rather than scattering Pi exceptions throughout the UI
+
+### Rules For Adding New Pi Functionality
+
+- **Default rule**: add new Pi code under `src/pi/` first
+- Only touch upstream-owned areas when you need an integration seam:
+  - backend selection
+  - settings exposure
+  - model selectors
+  - chat/command streaming hooks
+  - entitlement bypass helpers
+- Prefer **adapter functions** over inlining Pi-specific behavior into large upstream files
+- Prefer adding a new Pi helper and calling it from an upstream seam instead of rewriting upstream logic
+- Keep backend-specific conditionals shallow and obvious
+- If the same behavior is needed in multiple Pi surfaces, put it in a shared helper instead of re-implementing it in each UI path
+
+### Rules For Preserving Upstream Mergeability
+
+- Do not rename or broadly restructure upstream files unless absolutely necessary
+- Do not move large upstream components just to fit fork logic
+- Keep diffs in upstream files small, localized, and easy to reapply
+- Prefer:
+  - adding a new helper import
+  - adding a small backend branch
+  - adding a thin selector/dispatcher
+- Avoid:
+  - embedding Pi logic deep across many unrelated files
+  - mixing Pi-specific state into generic upstream types when a wrapper or optional field would work
+  - replacing upstream abstractions when extension is sufficient
+
+### Preferred Extension Pattern
+
+When adding new features, use this order of preference:
+
+1. Add fork-owned implementation under `src/pi/`
+2. Expose it through an existing seam
+3. Add the minimum backend-aware UI/settings glue required
+4. Add targeted tests around the seam and the Pi helper
+
+Good examples:
+
+- Add a Pi model catalog helper in `src/pi/`, then wire the settings UI to it
+- Add Pi transcript rendering helpers in `src/pi/`, then reuse them from chat and Quick Ask
+- Add Pi tool registry/helpers in `src/pi/`, then let chain runners consume that registry
+
+Bad examples:
+
+- Copy/pasting upstream chat logic into a parallel Pi-only UI tree
+- Putting large Pi implementations directly into `chainManager.ts`, settings components, or generic chat components
+- Solving Pi entitlement issues by sprinkling `agentBackend === "pi"` checks everywhere instead of centralizing them
+
+### Feature-Specific Guidance
+
+- **New tools / skills / projects support**
+  - Implement the Pi-side runtime and adapters in `src/pi/`
+  - Reuse existing Copilot UI affordances where possible
+  - If upstream already has a UX for the concept, prefer adapting data into that UX rather than building a new UI first
+- **New model/provider behavior**
+  - Keep Pi provider/model discovery independent from upstream model tabs where possible
+  - Make selectors backend-aware instead of overloading upstream provider state
+- **Thinking / reasoning / tool-call display**
+  - Reuse existing Copilot rendering patterns where possible
+  - Preserve raw Pi thinking separately from synthesized tool-call summaries
+  - Be careful not to lose intermediate assistant messages when finalizing multi-step Pi turns
+- **Quick Ask / custom commands**
+  - Changes should generally go through `use-streaming-chat-session.ts` before touching multiple UI call sites
+
+### Testing Expectations For Fork Work
+
+- Add focused unit tests for every new Pi helper or adapter
+- When changing a seam file, add at least one regression test that locks down the backend-specific behavior
+- For bugs involving streaming/finalization, test both:
+  - streaming-time behavior
+  - finalized persisted behavior
+
+### If Upstream Changes Conflict
+
+- Prefer re-applying the fork at the seam instead of carrying forward a large divergent patch
+- Re-check these areas first after pulling upstream:
+  - backend dispatch in `chainManager.ts`
+  - settings sanitization and settings UI
+  - entitlement/license helpers
+  - shared streaming hooks
+  - message rendering paths
+- If upstream introduces a new abstraction that can absorb the Pi fork cleanly, prefer migrating to that abstraction rather than preserving an older custom patch shape
