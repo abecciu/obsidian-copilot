@@ -285,7 +285,7 @@ export class PiAgentChainRunner extends BaseChainRunner {
       this.chainType === ChainType.COPILOT_PLUS_CHAIN ||
       this.chainType === ChainType.PROJECT_CHAIN
     ) {
-      return getPiTools();
+      return getPiTools({ chainType: this.chainType });
     }
     return [];
   }

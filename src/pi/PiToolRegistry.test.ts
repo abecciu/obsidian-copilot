@@ -2,9 +2,17 @@ const mockGetSettings = jest.fn();
 const mockCallTool = jest.fn();
 const mockSelfHostWebSearch = jest.fn();
 const mockGetCustomPiToolDefinitions = jest.fn(() => []);
+const mockIsDesktopRuntime = jest.fn(() => true);
 
 jest.mock("@/settings/model", () => ({
   getSettings: () => mockGetSettings(),
+}));
+
+jest.mock("@/chainFactory", () => ({
+  ChainType: {
+    COPILOT_PLUS_CHAIN: "copilot_plus",
+    PROJECT_CHAIN: "project",
+  },
 }));
 
 jest.mock("@/tools/toolManager", () => ({
@@ -43,22 +51,24 @@ jest.mock("@/logger", () => ({
   logError: jest.fn(),
 }));
 
+jest.mock("@/services/obsidianCli/ObsidianCliClient", () => ({
+  isDesktopRuntime: () => mockIsDesktopRuntime(),
+}));
+
 jest.mock("./PiCustomTools", () => ({
   getCustomPiToolDefinitions: () => mockGetCustomPiToolDefinitions(),
 }));
 
+import { ChainType } from "@/chainFactory";
 import { Type } from "@sinclair/typebox";
-import {
-  getPiTools,
-  registerPiToolProvider,
-  resetPiToolProvidersForTests,
-} from "./PiToolRegistry";
+import { getPiTools, registerPiToolProvider, resetPiToolProvidersForTests } from "./PiToolRegistry";
 
 describe("getPiTools", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     resetPiToolProvidersForTests();
     mockGetCustomPiToolDefinitions.mockReturnValue([]);
+    mockIsDesktopRuntime.mockReturnValue(true);
   });
 
   it("returns only the tools enabled in pi settings", () => {
@@ -281,5 +291,124 @@ describe("getPiTools", () => {
 
     expect(tools.map((tool) => tool.name)).toEqual(["localSearch", "duplicateTool"]);
     expect(tools.find((tool) => tool.name === "duplicateTool")?.label).toBe("Duplicate Tool A");
+  });
+
+  it("filters out desktop-only tools on mobile runtimes", () => {
+    mockGetSettings.mockReturnValue({
+      piAgent: {
+        enabledToolIds: ["localSearch"],
+      },
+    });
+    mockIsDesktopRuntime.mockReturnValue(false);
+
+    registerPiToolProvider("desktop-only-provider", () => [
+      {
+        id: "desktopOnlyTool",
+        enabledByDefault: true,
+        availability: {
+          platforms: ["desktop"],
+        },
+        tool: {
+          name: "desktopOnlyTool",
+          label: "Desktop Only Tool",
+          description: "Only available on desktop.",
+          parameters: Type.Object({}),
+          execute: async () => ({
+            content: [{ type: "text", text: "desktop" }],
+            details: { rawResult: "desktop", sources: [] },
+          }),
+        },
+      },
+    ]);
+
+    const tools = getPiTools();
+
+    expect(tools.map((tool) => tool.name)).toEqual(["localSearch"]);
+  });
+
+  it("falls back to the builtin tool when a desktop-only override is unavailable", async () => {
+    mockGetSettings.mockReturnValue({
+      piAgent: {
+        enabledToolIds: ["webSearch"],
+      },
+    });
+    mockIsDesktopRuntime.mockReturnValue(false);
+    mockSelfHostWebSearch.mockResolvedValue({
+      content: "Builtin mobile search",
+      citations: ["https://example.com/mobile"],
+    });
+
+    registerPiToolProvider("desktop-websearch-override", () => [
+      {
+        id: "webSearch",
+        enabledByDefault: true,
+        availability: {
+          platforms: ["desktop"],
+        },
+        tool: {
+          name: "webSearch",
+          label: "Desktop Web Search",
+          description: "Desktop-only override",
+          parameters: Type.Object({
+            query: Type.String(),
+          }),
+          execute: async (_toolCallId, params) => ({
+            content: [{ type: "text", text: `desktop:${String(params.query)}` }],
+            details: {
+              rawResult: params,
+              sources: [],
+            },
+          }),
+        },
+      },
+    ]);
+
+    const webSearchTool = getPiTools().find((tool) => tool.name === "webSearch");
+    const result = await webSearchTool!.execute("tool-call-mobile", {
+      query: "mobile fallback",
+    });
+
+    expect(webSearchTool?.label).toBe("Web Search");
+    expect(result.content).toEqual([
+      {
+        type: "text",
+        text: expect.stringContaining("Builtin mobile search"),
+      },
+    ]);
+    expect(mockSelfHostWebSearch).toHaveBeenCalledWith("mobile fallback");
+  });
+
+  it("filters tools by chain type when runtime context is provided", () => {
+    mockGetSettings.mockReturnValue({
+      piAgent: {
+        enabledToolIds: ["localSearch"],
+      },
+    });
+
+    registerPiToolProvider("project-only-provider", () => [
+      {
+        id: "projectOnlyTool",
+        enabledByDefault: true,
+        availability: {
+          chainTypes: [ChainType.PROJECT_CHAIN],
+        },
+        tool: {
+          name: "projectOnlyTool",
+          label: "Project Only Tool",
+          description: "Only available in project chat.",
+          parameters: Type.Object({}),
+          execute: async () => ({
+            content: [{ type: "text", text: "project" }],
+            details: { rawResult: "project", sources: [] },
+          }),
+        },
+      },
+    ]);
+
+    const projectTools = getPiTools({ chainType: ChainType.PROJECT_CHAIN });
+    const copilotTools = getPiTools({ chainType: ChainType.COPILOT_PLUS_CHAIN });
+
+    expect(projectTools.map((tool) => tool.name)).toEqual(["localSearch", "projectOnlyTool"]);
+    expect(copilotTools.map((tool) => tool.name)).toEqual(["localSearch"]);
   });
 });

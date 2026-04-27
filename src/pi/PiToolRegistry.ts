@@ -1,6 +1,8 @@
+import type { ChainType } from "@/chainFactory";
 import { getSettings } from "@/settings/model";
 import { selfHostWebSearch } from "@/LLMProviders/selfHostServices";
 import { logError, logInfo, logWarn } from "@/logger";
+import { isDesktopRuntime } from "@/services/obsidianCli/ObsidianCliClient";
 import { readNoteTool } from "@/tools/NoteTools";
 import { ToolManager } from "@/tools/toolManager";
 import {
@@ -34,18 +36,49 @@ export interface PiToolDetails {
 }
 
 /**
+ * Supported runtime platforms for metadata-driven Pi tool availability.
+ */
+export type PiToolPlatform = "desktop" | "mobile";
+
+/**
+ * Optional availability constraints applied before a Pi tool becomes visible
+ * to the active runtime.
+ */
+export interface PiToolAvailability {
+  platforms?: PiToolPlatform[];
+  chainTypes?: ChainType[];
+}
+
+/**
+ * Runtime context used to evaluate Pi tool availability metadata.
+ */
+export interface PiToolAvailabilityContext {
+  platform: PiToolPlatform;
+  chainType?: ChainType;
+}
+
+/**
  * A concrete Pi tool entry together with the settings id used to enable it.
  */
 export interface PiToolDefinition {
   id: string;
   tool: AgentTool<any, PiToolDetails>;
   enabledByDefault?: boolean;
+  availability?: PiToolAvailability;
 }
 
 /**
  * Provider function used to contribute Pi tools from fork-owned extension points.
  */
 export type PiToolProvider = () => PiToolDefinition[];
+
+/**
+ * Internal options for collecting Pi tool definitions from providers.
+ */
+interface CollectPiToolDefinitionsOptions {
+  context?: PiToolAvailabilityContext;
+  includeUnavailable?: boolean;
+}
 
 const timeRangeSchema = Type.Object({
   startTime: Type.Number(),
@@ -216,19 +249,47 @@ export function resetPiToolProvidersForTests(): void {
 }
 
 /**
- * Return the enabled pi tools from settings.
+ * Return the enabled Pi tools from settings after applying availability rules.
  */
-export function getPiTools(): AgentTool<any, PiToolDetails>[] {
+export function getPiTools(
+  context?: Partial<PiToolAvailabilityContext>
+): AgentTool<any, PiToolDetails>[] {
   const enabledToolIds = new Set(getSettings().piAgent.enabledToolIds);
-  return getPiToolDefinitions()
+  return getPiToolDefinitions(context)
     .filter((definition) => isPiToolEnabled(definition, enabledToolIds))
     .map((definition) => definition.tool);
 }
 
 /**
- * Return all Pi tool definitions after merging built-in and custom providers.
+ * Return Pi tool definitions available for the current runtime context after
+ * merging built-in and custom providers.
  */
-export function getPiToolDefinitions(): PiToolDefinition[] {
+export function getPiToolDefinitions(
+  context?: Partial<PiToolAvailabilityContext>
+): PiToolDefinition[] {
+  return collectPiToolDefinitions({
+    context: resolvePiToolAvailabilityContext(context),
+  });
+}
+
+/**
+ * Return all registered Pi tool definitions without applying availability
+ * filtering.
+ */
+export function getAllPiToolDefinitions(): PiToolDefinition[] {
+  return collectPiToolDefinitions({ includeUnavailable: true });
+}
+
+/**
+ * Collect Pi tool definitions from all providers, optionally filtering by the
+ * active runtime before duplicate resolution.
+ *
+ * Filtering before duplicate resolution lets a platform-specific override win
+ * only where it is actually available.
+ */
+function collectPiToolDefinitions(
+  options: CollectPiToolDefinitionsOptions = {}
+): PiToolDefinition[] {
   const toolDefinitions: PiToolDefinition[] = [];
   const seenToolIds = new Set<string>();
   const toolIndexById = new Map<string, number>();
@@ -247,6 +308,14 @@ export function getPiToolDefinitions(): PiToolDefinition[] {
     for (const definition of providedDefinitions) {
       if (!definition?.id || !definition?.tool?.name) {
         logWarn(`[PiToolRegistry] Skipping invalid Pi tool definition from '${providerId}'`);
+        continue;
+      }
+
+      if (
+        !options.includeUnavailable &&
+        options.context &&
+        !matchesPiToolAvailability(definition, options.context)
+      ) {
         continue;
       }
 
@@ -287,6 +356,21 @@ export function getPiToolDefinitions(): PiToolDefinition[] {
 }
 
 /**
+ * Resolve a full runtime context for Pi tool availability checks.
+ *
+ * @param context - Optional caller-provided availability overrides.
+ * @returns A context with platform resolved from the active runtime.
+ */
+function resolvePiToolAvailabilityContext(
+  context?: Partial<PiToolAvailabilityContext>
+): PiToolAvailabilityContext {
+  return {
+    platform: context?.platform ?? (isDesktopRuntime() ? "desktop" : "mobile"),
+    chainType: context?.chainType,
+  };
+}
+
+/**
  * Execute an existing StructuredTool and adapt the result to pi-agent-core.
  */
 async function executeStructuredTool<TParameters>(
@@ -306,6 +390,42 @@ async function executeStructuredTool<TParameters>(
       sources,
     },
   };
+}
+
+/**
+ * Check whether a Pi tool matches the current runtime availability context.
+ *
+ * @param definition - Pi tool definition to evaluate.
+ * @param context - Active runtime context.
+ * @returns True when the tool is available in the current runtime.
+ */
+function matchesPiToolAvailability(
+  definition: PiToolDefinition,
+  context: PiToolAvailabilityContext
+): boolean {
+  const availability = definition.availability;
+
+  if (!availability) {
+    return true;
+  }
+
+  if (
+    availability.platforms &&
+    availability.platforms.length > 0 &&
+    !availability.platforms.includes(context.platform)
+  ) {
+    return false;
+  }
+
+  if (
+    availability.chainTypes &&
+    availability.chainTypes.length > 0 &&
+    (!context.chainType || !availability.chainTypes.includes(context.chainType))
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 /**
